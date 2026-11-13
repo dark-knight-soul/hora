@@ -1,0 +1,13 @@
+# сборка
+/target/
+/dist/
+/release/
+# личные данные, если программу запускали из папки проекта
+config.ini
+*.log
+blacklist.txt
+/cache/
+/favorites/
+/wallpapers/
+/videos/
+portable.txt

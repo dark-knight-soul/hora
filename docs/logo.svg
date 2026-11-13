@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <title>Hora</title>
+  <rect width="120" height="120" rx="28" fill="#F4EDE4"/>
+  <path d="M28 100 L47 40 L60 74 L73 40 L92 100" fill="none" stroke="#1F2433" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="86" cy="26" r="8" fill="#E8763A"/>
+</svg>
