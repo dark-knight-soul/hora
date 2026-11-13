@@ -12,7 +12,7 @@ use windows_sys::Win32::UI::WindowsAndMessaging::*;
 // ---------------- встроенные шрифты (лицензия OFL, см. assets/fonts) ----------------
 
 // Встроенные шрифты: (имя семейства, файл). В память грузится только тот, что реально выбран.
-pub const EMBEDDED: [(&str, &[u8]); 13] = [
+pub const EMBEDDED: [(&str, &[u8]); 15] = [
     // свой шрифт программы (tools/make_font.py): буквы с разрывами, латиница и кириллица
     ("WallClock Split", include_bytes!("../assets/fonts/WallClockSplit.ttf")),
     ("Megrim", include_bytes!("../assets/fonts/Megrim.ttf")),
@@ -27,6 +27,8 @@ pub const EMBEDDED: [(&str, &[u8]); 13] = [
     ("Montserrat Alternates Light", include_bytes!("../assets/fonts/MontserratAlternates.ttf")),
     ("Cormorant Garamond", include_bytes!("../assets/fonts/CormorantGaramond.ttf")),
     ("Press Start 2P", include_bytes!("../assets/fonts/PressStart2P.ttf")),
+    ("Hora Pixel", include_bytes!("../assets/fonts/HoraPixel.ttf")),
+    ("Hora Block", include_bytes!("../assets/fonts/HoraBlock.ttf")),
 ];
 
 #[derive(Default)]

@@ -20,7 +20,7 @@
 ## Features
 
 - 🖼 **Changes your wallpaper** on a timer: [Wallhaven](https://wallhaven.cc) by category (nature, mountains, space, city…), your own folder, or both. The same picture on every monitor, a different one on each, or **spanned** — one wide picture across all screens.
-- 🕰 **A big clock under your desktop icons** — 12 styles: spaced-out weekday, minimal, "time | date", in words ("quarter to two"), calendar, analog and more. A custom split-letter font with Latin and Cyrillic. Automatic color from the wallpaper's brightness, plus a halo or a "frosted glass" plate behind the text on busy backgrounds.
+- 🕰 **A big clock under your desktop icons** — 12 styles: spaced-out weekday, minimal, "time | date", in words ("quarter to two"), calendar, analog and more. Three custom fonts with Latin and Cyrillic: split letters, LED dots (Hora Pixel) and chunky block pixels (Hora Block). Automatic color from the wallpaper's brightness, plus a halo or a "frosted glass" plate behind the text on busy backgrounds.
 - ⛅ **Weather** from [Open-Meteo](https://open-meteo.com): icon, temperature, wind, humidity and a 3-day forecast.
 - ✨ **Live wallpapers** (optional): snow, rain, stars, falling leaves, fireflies or "match the weather" on top of your regular wallpaper — or **video instead of a picture**, including video wallpapers from the **Wallpaper Engine** Workshop.
 - ♥ **Favorites and a blacklist**: wallpapers you like come back from time to time, ones you don't are never shown again.
@@ -128,10 +128,11 @@ Releases are signed with an ECDSA P-256 key (`tools/new-signing-key.ps1` — onc
 | `src/weather.rs`, `src/http.rs` | weather (Open-Meteo) and downloads via the built-in WinHTTP with the system proxy |
 | `build.rs` | manifest and icon — drawn in code, no external tools |
 | `tools/make_font.py` | generator of the "WallClock Split" font (Latin + Cyrillic) |
+| `tools/make_pixel_fonts.py` | generator of the "Hora Pixel" and "Hora Block" pixel fonts |
 | `tools/pe-harden.ps1` | post-build step that makes Windows load system DLLs only from System32 (DLL planting protection) |
 
 </details>
 
 ## License
 
-Code — [MIT](LICENSE). Fonts in `assets/fonts` (Michroma, Megrim, Unbounded, Jura, Russo One, Oswald, Comfortaa, Tektur, Exo 2, Montserrat Alternates, Cormorant Garamond, Press Start 2P — Google Fonts) are under the SIL Open Font License 1.1; the license texts are next to them. Wallpapers belong to their authors on Wallhaven; Hora does not distribute them, it only downloads them at your choice.
+Code — [MIT](LICENSE). Fonts in `assets/fonts` (Michroma, Megrim, Unbounded, Jura, Russo One, Oswald, Comfortaa, Tektur, Exo 2, Montserrat Alternates, Cormorant Garamond, Press Start 2P — Google Fonts) are under the SIL Open Font License 1.1; the license texts are next to them. The custom fonts WallClock Split, Hora Pixel and Hora Block are MIT, like the code. Wallpapers belong to their authors on Wallhaven; Hora does not distribute them, it only downloads them at your choice.

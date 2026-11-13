@@ -245,7 +245,7 @@ const COLORS: [(u32, &str); 14] = [
     (0xFF5F5F, "Красный"),
 ];
 // Шрифты крупного текста: (имя для config.ini, подпись в меню). Пустая строка — разделитель.
-const FONTS: [(&str, &str); 22] = [
+const FONTS: [(&str, &str); 24] = [
     ("auto", "Авто (под стиль)"),
     ("", ""),
     ("Michroma", "Michroma — как на фото (только латиница)"),
@@ -261,6 +261,8 @@ const FONTS: [(&str, &str); 22] = [
     ("Montserrat Alternates Light", "Montserrat Alternates — лёгкий"),
     ("Cormorant Garamond", "Cormorant — с засечками, изящный"),
     ("Press Start 2P", "Press Start 2P — пиксельный"),
+    ("Hora Pixel", "Hora Pixel — точки, как на табло (рус/англ)"),
+    ("Hora Block", "Hora Block — блочные пиксели, как в играх-песочницах (рус/англ)"),
     ("", ""),
     ("Bahnschrift", "Bahnschrift (Windows)"),
     ("Bahnschrift Condensed", "Bahnschrift Condensed (Windows)"),

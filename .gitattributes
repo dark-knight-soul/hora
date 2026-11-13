@@ -1,0 +1,7 @@
+# Текст в репозитории — с LF; скрипты Windows — с CRLF; шрифты и картинки не трогаем
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.ttf binary
+*.png binary
+*.ico binary
+*.bin binary

@@ -6,7 +6,7 @@ use std::{env, fs, path::PathBuf};
 
 const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="Hora" version="0.2.0.0" processorArchitecture="amd64"/>
+  <assemblyIdentity type="win32" name="Hora" version="{VER}" processorArchitecture="amd64"/>
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
     <application>
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
@@ -33,6 +33,8 @@ const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
+    // версия берётся из Cargo.toml — при её смене ресурсы надо пересобрать
+    println!("cargo:rerun-if-changed=Cargo.toml");
     let target = env::var("TARGET").unwrap_or_default();
     if !target.contains("windows") {
         return;
@@ -59,7 +61,9 @@ fn main() {
         res.push((3, (i + 1) as u16, dib)); // RT_ICON
     }
     res.push((14, 1, group)); // RT_GROUP_ICON
-    res.push((24, 1, MANIFEST.as_bytes().to_vec())); // RT_MANIFEST
+    let ver = version4();
+    res.push((24, 1, MANIFEST.replace("{VER}", &format!("{}.{}.{}.0", ver[0], ver[1], ver[2])).into_bytes())); // RT_MANIFEST
+    res.push((16, 1, version_info(ver))); // RT_VERSION — «Свойства → Подробно» и имя в диспетчере задач
 
     let obj = coff_resources(&mut res);
     let path = out.join("wallclock_res.o");
@@ -136,6 +140,79 @@ fn align8(v: &mut Vec<u8>) {
 }
 
 /// Собирает COFF-объект с одной секцией .rsrc (как это делает windres).
+/// Версия из Cargo.toml: [старшая, младшая, исправление]
+fn version4() -> [u16; 3] {
+    let v = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    let mut n = [0u16; 3];
+    for (i, part) in v.split(['.', '-']).take(3).enumerate() {
+        n[i] = part.parse().unwrap_or(0);
+    }
+    n
+}
+
+/// Один узел VS_VERSIONINFO: длина, длина значения, тип, ключ UTF-16, значение и дети (всё выровнено по 4)
+fn ver_node(key: &str, value: &[u8], value_len: u16, text: bool, children: &[Vec<u8>]) -> Vec<u8> {
+    let mut b = Vec::new();
+    push16(&mut b, 0); // длина — допишем в конце
+    push16(&mut b, value_len);
+    push16(&mut b, text as u16);
+    for c in key.encode_utf16().chain([0]) {
+        push16(&mut b, c);
+    }
+    while b.len() % 4 != 0 {
+        b.push(0);
+    }
+    b.extend_from_slice(value);
+    for ch in children {
+        while b.len() % 4 != 0 {
+            b.push(0);
+        }
+        b.extend_from_slice(ch);
+    }
+    let len = b.len() as u16;
+    b[0..2].copy_from_slice(&len.to_le_bytes());
+    b
+}
+
+fn ver_string(key: &str, val: &str) -> Vec<u8> {
+    let mut v = Vec::new();
+    let mut n = 0u16;
+    for c in val.encode_utf16().chain([0]) {
+        push16(&mut v, c);
+        n += 1;
+    }
+    ver_node(key, &v, n, true, &[])
+}
+
+/// Ресурс версии: описание, версия, авторские права (язык — английский США, Unicode)
+fn version_info(v: [u16; 3]) -> Vec<u8> {
+    let ms = (v[0] as u32) << 16 | v[1] as u32;
+    let ls = (v[2] as u32) << 16;
+    let mut fixed = Vec::new();
+    for x in [0xFEEF_04BD, 0x0001_0000, ms, ls, ms, ls, 0x3F, 0, 0x0004_0004, 1, 0, 0, 0] {
+        push32(&mut fixed, x);
+    }
+    let text = format!("{}.{}.{}", v[0], v[1], v[2]);
+    let strings = [
+        ver_string("CompanyName", "Hora contributors"),
+        ver_string("FileDescription", "Hora"),
+        ver_string("FileVersion", &text),
+        ver_string("InternalName", "Hora"),
+        ver_string("LegalCopyright", "MIT License, Hora contributors"),
+        ver_string("OriginalFilename", "Hora.exe"),
+        ver_string("ProductName", "Hora"),
+        ver_string("ProductVersion", &text),
+    ];
+    let table = ver_node("040904B0", &[], 0, true, &strings);
+    let sfi = ver_node("StringFileInfo", &[], 0, true, &[table]);
+    let mut tr = Vec::new();
+    push16(&mut tr, 0x0409);
+    push16(&mut tr, 0x04B0);
+    let var = ver_node("Translation", &tr, 4, false, &[]);
+    let vfi = ver_node("VarFileInfo", &[], 0, true, &[var]);
+    ver_node("VS_VERSION_INFO", &fixed, fixed.len() as u16, false, &[sfi, vfi])
+}
+
 fn coff_resources(res: &mut Vec<(u16, u16, Vec<u8>)>) -> Vec<u8> {
     res.sort_by_key(|r| (r.0, r.1));
     let mut types: Vec<u16> = res.iter().map(|r| r.0).collect();

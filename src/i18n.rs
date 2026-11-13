@@ -162,6 +162,8 @@ const PAIRS: &[(&str, &str)] = &[
     ("Montserrat Alternates — лёгкий", "Montserrat Alternates — light"),
     ("Cormorant — с засечками, изящный", "Cormorant — elegant serif"),
     ("Press Start 2P — пиксельный", "Press Start 2P — pixel"),
+    ("Hora Pixel — точки, как на табло (рус/англ)", "Hora Pixel — LED dots, like a scoreboard (Latin/Cyrillic)"),
+    ("Hora Block — блочные пиксели, как в играх-песочницах (рус/англ)", "Hora Block — chunky block pixels, sandbox-game style (Latin/Cyrillic)"),
     ("Авто (Bahnschrift)", "Auto (Bahnschrift)"),
     ("нет видео: положите mp4 в папку videos или подпишитесь на видеообои в Wallpaper Engine", "no videos: put mp4 files into the videos folder or subscribe to video wallpapers in Wallpaper Engine"),
     ("Hora — подбираю обои…", "Hora — picking a wallpaper…"),

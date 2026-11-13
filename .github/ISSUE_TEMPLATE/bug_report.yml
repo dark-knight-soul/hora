@@ -1,0 +1,47 @@
+name: Bug report · Ошибка
+description: Something doesn't work as expected · Что-то работает не так
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Hora version · Версия Hora
+      description: Settings → Other · Настройки → Прочее
+      placeholder: "0.5.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install type · Тип установки
+      options:
+        - "Just me · Для себя"
+        - "All users · Для всех"
+        - "Portable · Переносная"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version · Версия Windows
+      placeholder: "Windows 11 24H2"
+    validations:
+      required: true
+  - type: input
+    id: monitors
+    attributes:
+      label: Monitors and scaling · Мониторы и масштаб
+      placeholder: "2 monitors, 150% + 100%"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened · Что случилось
+      description: Steps, what you expected, what happened. Screenshots help. · Шаги, что ожидали, что получилось.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log · Журнал (hora.log)
+      description: Remove personal data (city, paths) before pasting. · Уберите личные данные.
+      render: text

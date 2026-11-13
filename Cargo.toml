@@ -1,8 +1,10 @@
 [package]
-name = "wallclock"
-version = "0.4.0"
+name = "hora"
+version = "0.5.0"
 edition = "2021"
 build = "build.rs"
+license = "MIT"
+repository = "https://github.com/dark-knight-soul/hora"
 description = "Hora — лёгкая смена обоев, большие часы и живые обои на рабочем столе Windows"
 
 [[bin]]
