@@ -6,6 +6,11 @@
 //   • «для всех пользователей» — в Program Files (Windows попросит подтвердить права).
 // Создаёт ярлык в меню «Пуск» и запись в «Параметры → Приложения», откуда программу можно удалить
 // (Hora.exe --uninstall). Настройки установленной версии лежат в %LOCALAPPDATA%\Hora у каждого пользователя.
+//
+// Тихий режим (для winget и администраторов) — без единого окна, итог только в коде выхода:
+//   HoraSetup.exe --silent               — для себя;
+//   HoraSetup.exe --silent --all-users   — для всех (нужны права администратора);
+//   Hora.exe --uninstall --silent        — удалить (настройки пользователя остаются).
 
 use crate::i18n::tr;
 use crate::util::{log, wide};
@@ -112,7 +117,16 @@ fn dialog(d: &Dialog) -> (i32, bool) {
     }
 }
 
+/// Тихий режим: в командной строке есть --silent — никаких окон.
+fn silent() -> bool {
+    std::env::args().any(|a| a.eq_ignore_ascii_case("--silent"))
+}
+
 fn message(main: &str, content: &str) {
+    if silent() {
+        log(&format!("{main}: {content}"));
+        return;
+    }
     dialog(&Dialog { main, content, links: &[], common: windows_sys::Win32::UI::Controls::TDCBF_OK_BUTTON, check: None, shield: false });
 }
 
@@ -180,6 +194,31 @@ pub fn run() {
         }
         return;
     }
+}
+
+/// Тихая установка (--silent). Код выхода: 0 — успех, 1 — ошибка (подробности в журнале),
+/// 1602 — не подтвердили права администратора (как у установщиков Windows).
+pub fn silent_install(all: bool) -> i32 {
+    if all {
+        if unsafe { IsUserAnAdmin() } != 0 {
+            return install_elevated();
+        }
+        return match run_elevated("--install-all --silent") {
+            Some(code) => code as i32,
+            None => 1602,
+        };
+    }
+    // если Hora работала (обновление поверх), после замены запустим её снова
+    let was_running = unsafe { !FindWindowW(wide("WallClockMain").as_ptr(), std::ptr::null()).is_null() };
+    if !install(false) {
+        return 1;
+    }
+    if was_running {
+        if let Some(dir) = install_dir(false) {
+            let _ = std::process::Command::new(dir.join("Hora.exe")).current_dir(&dir).spawn();
+        }
+    }
+    0
 }
 
 /// Вызывается с правами администратора (HoraSetup.exe --install-all). Код выхода: 0 — успех.
@@ -352,6 +391,7 @@ pub(crate) fn register_uninstall(all: bool, exe: &Path, dir: &Path) -> Result<()
         set_str("DisplayIcon", &format!("{exe_s},0"));
         set_str("InstallLocation", &dir.display().to_string());
         set_str("UninstallString", &format!("\"{exe_s}\" --uninstall"));
+        set_str("QuietUninstallString", &format!("\"{exe_s}\" --uninstall --silent"));
         set_dw("NoModify", 1);
         set_dw("NoRepair", 1);
         let kb = std::fs::metadata(exe).map(|m| (m.len() / 1024) as u32).unwrap_or(0);
@@ -374,14 +414,18 @@ pub fn uninstall() {
         message(tr("Это переносная версия Hora"), tr("Её не нужно удалять через «Приложения» — просто удалите папку с программой."));
         return;
     }
-    let (b, wipe) = dialog(&Dialog {
+    let (b, wipe) = if silent() {
+        (IDYES, false) // тихо: без вопросов, личные настройки не трогаем
+    } else {
+        dialog(&Dialog {
         main: tr("Удалить Hora?"),
         content: tr("Будут удалены программа, ярлык в меню «Пуск» и автозапуск."),
         links: &[],
         common: windows_sys::Win32::UI::Controls::TDCBF_YES_BUTTON | windows_sys::Win32::UI::Controls::TDCBF_NO_BUTTON,
         check: Some((tr("Удалить также мои настройки, избранное и скачанные обои"), false)),
         shield: false,
-    });
+    })
+    };
     if b != IDYES {
         return;
     }
@@ -403,7 +447,7 @@ pub fn uninstall() {
     }
     if all && unsafe { IsUserAnAdmin() } == 0 {
         // ярлык для всех, запись в HKLM и папка в Program Files — только с правами администратора
-        if run_elevated("--uninstall-system") != Some(0) {
+        if run_elevated(if silent() { "--uninstall-system --silent" } else { "--uninstall-system" }) != Some(0) {
             message(tr("Hora не удалена"), tr("Без прав администратора программу «для всех пользователей» удалить нельзя."));
             return;
         }

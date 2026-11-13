@@ -9,6 +9,7 @@
 [Русский](README.md) | **English**
 
 [![Download](https://img.shields.io/github/v/release/dark-knight-soul/hora?label=download&color=E8763A&style=flat-square)](https://github.com/dark-knight-soul/hora/releases/latest)
+[![Build](https://img.shields.io/github/actions/workflow/status/dark-knight-soul/hora/build.yml?branch=main&label=build&style=flat-square)](https://github.com/dark-knight-soul/hora/actions/workflows/build.yml)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-1F2433?style=flat-square)
 ![Rust](https://img.shields.io/badge/Rust-no%20runtime%20dependencies-1F2433?style=flat-square)
 [![License MIT](https://img.shields.io/badge/license-MIT-1F2433?style=flat-square)](LICENSE)
@@ -53,6 +54,8 @@ Get the latest version from [**Releases**](https://github.com/dark-knight-soul/h
 | [**Hora-portable.zip**](https://github.com/dark-knight-soul/hora/releases/latest/download/Hora-portable.zip) | Portable version: unpack anywhere (even a USB stick) and run `Hora.exe`. Everything is stored next to it. |
 
 > The program is not code-signed, so Windows SmartScreen may warn you on the first run: "More info" → "Run anyway". SHA-256 checksums are in `SHA256SUMS.txt` next to the release files.
+
+Silent install without any windows (for admins and scripts): `HoraSetup.exe --silent` — just for me, `HoraSetup.exe --silent --all-users` — for all users; uninstall with `Hora.exe --uninstall --silent` (settings are kept).
 
 ## How to use
 

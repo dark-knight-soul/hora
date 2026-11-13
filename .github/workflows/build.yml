@@ -1,0 +1,45 @@
+# Автосборка: после каждого коммита и в каждом запросе на слияние собрать Hora и прогнать тесты.
+# Готовый Hora.exe (без подписи обновлений) лежит в «Artifacts» запуска.
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v7
+
+      # тот же набор, что и у автора: GNU-вариант Rust, без Visual Studio
+      - name: Rust (x86_64-pc-windows-gnu)
+        shell: powershell
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+          rustup default stable-x86_64-pc-windows-gnu
+          rustc --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Tests
+        run: cargo test --release
+
+      - name: Build
+        shell: powershell
+        run: |
+          cargo build --release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # защита от подмены DLL рядом с exe (GNU ld сам не заполняет LOAD_CONFIG)
+          & .\tools\pe-harden.ps1 target\release\Hora.exe
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Hora-${{ github.sha }}
+          path: target/release/Hora.exe
+          retention-days: 14

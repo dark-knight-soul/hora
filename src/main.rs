@@ -1845,6 +1845,8 @@ fn main() {
     // установка и удаление (HoraSetup.exe, «Параметры → Приложения»)
     match args.get(1).map(|s| s.as_str()) {
         Some("--uninstall") => return setup::uninstall(),
+        // тихая установка для winget: HoraSetup.exe --silent [--all-users]
+        Some("--silent") => std::process::exit(setup::silent_install(args.iter().any(|a| a.eq_ignore_ascii_case("--all-users")))),
         // замена программы новой версией (см. update.rs)
         Some("--update-coordinator") => {
             util::set_log(false);

@@ -2,6 +2,11 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
+## [0.5.1] — 2026-11-13
+### Added · Добавлено
+- Silent install and uninstall for winget and admins: `HoraSetup.exe --silent [--all-users]`, `Hora.exe --uninstall --silent`. · Тихая установка и удаление без окон.
+- Automatic build and tests on GitHub Actions. · Автосборка и тесты на GitHub.
+
 ## [0.5.0] — 2026-11-13
 ### Added · Добавлено
 - Two new pixel fonts with Latin and Cyrillic: **Hora Pixel** (LED dots, like a scoreboard) and **Hora Block** (chunky block pixels). · Два новых пиксельных шрифта с кириллицей: «табло» из точек и блочный.
@@ -23,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Added
 - First public release: wallpapers from Wallhaven or a folder, 12 clock styles, weather, favorites and blacklist, live wallpapers (effects and video, incl. Wallpaper Engine video), installer and portable version. · Первый публичный выпуск.
 
+[0.5.1]: https://github.com/dark-knight-soul/hora/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dark-knight-soul/hora/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dark-knight-soul/hora/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/dark-knight-soul/hora/compare/v0.2.0...v0.3.0

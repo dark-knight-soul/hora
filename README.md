@@ -9,6 +9,7 @@
 **Русский** | [English](README.en.md)
 
 [![Скачать](https://img.shields.io/github/v/release/dark-knight-soul/hora?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=E8763A&style=flat-square)](https://github.com/dark-knight-soul/hora/releases/latest)
+[![Сборка](https://img.shields.io/github/actions/workflow/status/dark-knight-soul/hora/build.yml?branch=main&label=%D1%81%D0%B1%D0%BE%D1%80%D0%BA%D0%B0&style=flat-square)](https://github.com/dark-knight-soul/hora/actions/workflows/build.yml)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-1F2433?style=flat-square)
 ![Rust](https://img.shields.io/badge/Rust-%D0%B1%D0%B5%D0%B7%20%D0%B7%D0%B0%D0%B2%D0%B8%D1%81%D0%B8%D0%BC%D0%BE%D1%81%D1%82%D0%B5%D0%B9%20%D0%B2%20%D1%80%D0%B0%D0%BD%D1%82%D0%B0%D0%B9%D0%BC%D0%B5-1F2433?style=flat-square)
 [![Лицензия MIT](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-1F2433?style=flat-square)](LICENSE)
@@ -52,6 +53,8 @@
 | [**Hora-portable.zip**](https://github.com/dark-knight-soul/hora/releases/latest/download/Hora-portable.zip) | Переносная версия: распакуйте куда угодно (хоть на флешку) и запустите `Hora.exe`. Всё хранится рядом с программой. |
 
 > Программа не подписана сертификатом, поэтому при первом запуске Windows SmartScreen может предупредить: «Подробнее» → «Выполнить в любом случае». Контрольные суммы — в `SHA256SUMS.txt` рядом с файлами выпуска.
+
+Тихая установка без окон (для администраторов и скриптов): `HoraSetup.exe --silent` — для себя, `HoraSetup.exe --silent --all-users` — для всех; удаление — `Hora.exe --uninstall --silent` (настройки остаются).
 
 ## Как пользоваться
 
