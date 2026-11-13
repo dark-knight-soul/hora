@@ -10,6 +10,7 @@ mod i18n;
 mod live;
 mod setup;
 mod ui;
+mod update;
 mod util;
 mod wallpaper;
 mod weather;
@@ -31,6 +32,8 @@ const WM_TRAY: u32 = WM_APP + 1;
 const WM_WP_DONE: u32 = WM_APP + 2;
 const WM_BG_DONE: u32 = WM_APP + 3;
 const WM_OPEN_UI: u32 = WM_APP + 4;
+const WM_UPDATE_CHECKED: u32 = WM_APP + 6; // проверка обновлений закончилась
+const WM_UPDATE_READY: u32 = WM_APP + 7; // обновление скачано и проверено (или ошибка)
 const WM_WEATHER_DONE: u32 = WM_APP + 5; // погода загружена (или ошибка) // открыть окно настроек (в том числе по просьбе второй копии программы)
 
 const T_CLOCK: usize = 1;
@@ -50,6 +53,7 @@ const T_WP_RETRY: usize = 9;
 const T_SYS_RETRY: usize = 10;
 const T_ZFIX: usize = 11; // вернуть часы под иконки, если Explorer положил поверх свой слой
 const T_AFTER_WP: usize = 12; // повторная проверка часов после смены обоев
+const T_UPDATE: usize = 14; // проверка обновлений (через полминуты после запуска, потом раз в сутки)
 const T_LIVE_RETRY: usize = 13; // новости живых обоев не разобраны (состояние было занято) — ещё раз
 
 // окно рабочего стола и наше главное окно — для обработчика системных событий
@@ -153,6 +157,10 @@ const M_OPEN_DIR: usize = 701;
 const M_SETTINGS: usize = 702;
 const M_UI_THEME: usize = 720; // +индекс
 const M_UI_LANG: usize = 960; // +индекс в UI_LANGS
+const M_UPDATE_NOW: usize = 970; // обновить до найденной версии
+const M_UPDATE_CHECK: usize = 971; // проверить обновления сейчас
+const M_UPDATE_AUTO: usize = 972; // проверять автоматически вкл/выкл
+const M_UPDATE_PAGE: usize = 973; // страница выпуска («что нового»)
 const UI_LANGS: [(&str, &str); 3] = [("auto", "Как в Windows"), ("ru", "Русский"), ("en", "English")];
 const M_WEATHER_ON: usize = 740;
 const M_WEATHER_REFRESH: usize = 741;
@@ -305,6 +313,19 @@ struct App {
     videos_at: Option<std::time::Instant>, // когда последний раз искали видео
     live_mode: live::Mode,         // что живые обои показывают на самом деле (с учётом погоды и наличия видео)
     banned_favs: Vec<PathBuf>,     // файлы, убранные из избранного последним «Не показывать» (для «Вернуть»)
+    upd: UpdState,                 // обновления: что сейчас происходит
+    upd_notified: String,          // о какой версии уже сообщили всплывающим уведомлением
+}
+
+/// Обновления: что сейчас происходит.
+#[derive(Clone, PartialEq)]
+enum UpdState {
+    Idle,
+    Checking,
+    Latest,
+    Available(update::Release),
+    Downloading(String),
+    Failed(String),
 }
 
 /// Текущий час (0..23) по местному времени.
@@ -757,6 +778,116 @@ impl App {
         }
     }
 
+    /// Всплывающее уведомление у значка в трее.
+    fn balloon(&self, title: &str, text: &str) {
+        unsafe {
+            let mut nid: NOTIFYICONDATAW = std::mem::zeroed();
+            nid.cbSize = std::mem::size_of::<NOTIFYICONDATAW>() as u32;
+            nid.hWnd = self.hwnd;
+            nid.uID = 1;
+            nid.uFlags = NIF_INFO;
+            nid.dwInfoFlags = NIIF_INFO;
+            util::copy_to_buf(&mut nid.szInfoTitle, title);
+            util::copy_to_buf(&mut nid.szInfo, text);
+            Shell_NotifyIconW(NIM_MODIFY, &nid);
+        }
+    }
+
+    // ---- обновления ----
+    /// Спросить GitHub о новой версии (в фоне). manual — нажали кнопку (ошибку тогда показываем).
+    fn start_update_check(&mut self, manual: bool) {
+        if matches!(self.upd, UpdState::Checking | UpdState::Downloading(_)) {
+            return;
+        }
+        self.upd = UpdState::Checking;
+        let hwnd = self.hwnd as usize;
+        let ok = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
+            let r = util::parcel_new(update::check());
+            unsafe {
+                if PostMessageW(hwnd as HWND, WM_UPDATE_CHECKED, manual as usize, r) == 0 {
+                    drop(util::parcel_take::<Result<Option<update::Release>, String>>(r));
+                }
+            }
+        });
+        if ok.is_err() {
+            self.upd = UpdState::Idle;
+        }
+        ui::refresh();
+    }
+
+    fn update_checked(&mut self, manual: bool, r: Result<Option<update::Release>, String>) {
+        self.upd = match r {
+            Ok(Some(rel)) => {
+                log(&format!("обновления: доступна версия {}", rel.version));
+                // о новой версии сообщаем один раз (при ручной проверке её и так видно в окне)
+                if !manual && self.upd_notified != rel.version {
+                    self.upd_notified = rel.version.clone();
+                    let text = if i18n::en() { format!("Version {}. Click to open the settings and update.", rel.version) } else { format!("Версия {}. Нажмите, чтобы открыть настройки и обновить.", rel.version) };
+                    self.balloon(tr("Доступна новая версия Hora"), &text);
+                }
+                UpdState::Available(rel)
+            }
+            Ok(None) => UpdState::Latest,
+            Err(e) => {
+                log(&format!("обновления: не удалось проверить: {e}"));
+                if manual {
+                    UpdState::Failed(e)
+                } else {
+                    UpdState::Idle
+                }
+            }
+        };
+        ui::refresh();
+    }
+
+    /// Скачать найденную версию, проверить подпись и поставить её.
+    fn start_update_install(&mut self) {
+        let UpdState::Available(rel) = self.upd.clone() else { return };
+        self.upd = UpdState::Downloading(rel.version.clone());
+        let hwnd = self.hwnd as usize;
+        let ok = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
+            let r = util::parcel_new(update::download(&rel));
+            unsafe {
+                if PostMessageW(hwnd as HWND, WM_UPDATE_READY, 0, r) == 0 {
+                    drop(util::parcel_take::<Result<PathBuf, String>>(r));
+                }
+            }
+        });
+        if ok.is_err() {
+            self.upd = UpdState::Failed(tr("неизвестная ошибка").into());
+        }
+        ui::refresh();
+    }
+
+    /// Обновление скачано и проверено: запускаем замену и закрываемся (новая версия запустится сама).
+    fn update_ready(&mut self, r: Result<PathBuf, String>) -> bool {
+        match r.and_then(|exe| update::start(&exe)) {
+            Ok(()) => {
+                log("обновления: новая версия проверена, устанавливаю и перезапускаюсь");
+                true
+            }
+            Err(e) => {
+                log(&format!("обновления: не удалось обновить: {e}"));
+                self.upd = UpdState::Failed(e);
+                ui::refresh();
+                false
+            }
+        }
+    }
+
+    /// Строка состояния обновлений для окна: (текст, найденная версия, идёт работа).
+    fn update_view(&self) -> (String, Option<String>, bool) {
+        let en = i18n::en();
+        match &self.upd {
+            UpdState::Idle => (tr("Обновления ещё не проверялись").into(), None, false),
+            UpdState::Checking => (tr("Проверяю обновления…").into(), None, true),
+            UpdState::Latest => (tr("У вас последняя версия").into(), None, false),
+            UpdState::Available(r) => (if en { format!("Version {} is available", r.version) } else { format!("Доступна версия {}", r.version) }, Some(r.version.clone()), false),
+            UpdState::Downloading(v) => (if en { format!("Downloading and checking version {v}…") } else { format!("Скачиваю и проверяю версию {v}…") }, None, true),
+            UpdState::Failed(e) => (if en { format!("Update error: {e}") } else { format!("Ошибка обновления: {e}") }, None, false),
+        }
+    }
+
     fn set_tip(&self, tip: &str) {
         self.tray(NIM_MODIFY, tip);
     }
@@ -766,6 +897,15 @@ impl App {
         let c = self.cfg.clone();
         if c.ui_lang != old.ui_lang {
             i18n::set_lang(&c.ui_lang); // окно и меню сразу на новом языке (окно перерисуется ниже)
+        }
+        if c.update_check != old.update_check {
+            unsafe {
+                if c.update_check {
+                    SetTimer(self.hwnd, T_UPDATE, 5_000, None);
+                } else {
+                    KillTimer(self.hwnd, T_UPDATE);
+                }
+            }
         }
         if c.interval_min != old.interval_min || c.paused != old.paused {
             self.schedule_wallpaper();
@@ -953,6 +1093,11 @@ fn build_menu(a: &App, bitmaps: &mut Vec<windows_sys::Win32::Graphics::Gdi::HBIT
         add(m, M_SETTINGS, tr("Открыть Hora"), false);
         SetMenuDefaultItem(m, M_SETTINGS as u32, 0);
         sep(m);
+        if let UpdState::Available(r) = &a.upd {
+            let s = if i18n::en() { format!("Update to {}", r.version) } else { format!("Обновить до {}", r.version) };
+            add(m, M_UPDATE_NOW, &s, false);
+            sep(m);
+        }
         add(m, M_NEXT, tr("Следующие обои"), false);
         let fav = a.current_is_fav();
         add(m, M_FAV, if fav { tr("В избранном (нажмите, чтобы убрать)") } else { tr("В избранное") }, fav);
@@ -1119,6 +1264,7 @@ fn build_menu(a: &App, bitmaps: &mut Vec<windows_sys::Win32::Graphics::Gdi::HBIT
             add(mlang, M_UI_LANG + i, tr(t), c.ui_lang == *v);
         }
         sub(m, mlang, "Язык / Language");
+        add(m, M_UPDATE_CHECK, tr("Проверить обновления"), false);
         add(m, M_CONFIG, tr("Все настройки (config.ini)"), false);
         add(m, M_FOLDER, tr("Открыть мою папку с обоями"), false);
         add(m, M_AUTOSTART, tr("Запускать вместе с Windows"), autostart_enabled());
@@ -1378,6 +1524,21 @@ fn on_menu(a: &mut App, id: usize) -> After {
         M_SETTINGS => return After::Settings,
         x if (M_UI_THEME..M_UI_THEME + UI_THEMES.len()).contains(&x) => a.cfg.ui_theme = UI_THEMES[x - M_UI_THEME].0.into(),
         x if (M_UI_LANG..M_UI_LANG + UI_LANGS.len()).contains(&x) => a.cfg.ui_lang = UI_LANGS[x - M_UI_LANG].0.into(),
+        M_UPDATE_NOW => {
+            a.start_update_install();
+            return After::Nothing;
+        }
+        M_UPDATE_CHECK => {
+            a.start_update_check(true);
+            return After::Nothing;
+        }
+        M_UPDATE_AUTO => a.cfg.update_check = !a.cfg.update_check,
+        M_UPDATE_PAGE => {
+            if let UpdState::Available(r) = &a.upd {
+                return After::Open(PathBuf::from(r.page.clone()));
+            }
+            return After::Nothing;
+        }
         M_WEATHER_ON => a.cfg.weather = !a.cfg.weather,
         x if (M_BACKDROP..M_BACKDROP + BACKDROPS.len()).contains(&x) => a.cfg.backdrop = BACKDROPS[x - M_BACKDROP].0.into(),
         M_WEATHER_REFRESH => {
@@ -1437,7 +1598,26 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 WM_RBUTTONUP | WM_CONTEXTMENU => show_menu(hwnd),
                 // щелчок по значку — окно настроек
                 WM_LBUTTONUP => ui::open(),
+                0x405 => ui::open_page(7), // NIN_BALLOONUSERCLICK — щёлкнули по уведомлению об обновлении
                 _ => {}
+            }
+            0
+        }
+        WM_UPDATE_CHECKED => {
+            if let Some(r) = util::parcel_take::<Result<Option<update::Release>, String>>(lp) {
+                let manual = wp != 0;
+                if with_app(|a| a.update_checked(manual, r.clone())).is_none() {
+                    // состояние занято — проверим ещё раз позже
+                    SetTimer(hwnd, T_UPDATE, 2_000, None);
+                }
+            }
+            0
+        }
+        WM_UPDATE_READY => {
+            if let Some(r) = util::parcel_take::<Result<PathBuf, String>>(lp) {
+                if with_app(|a| a.update_ready(r)).unwrap_or(false) {
+                    DestroyWindow(hwnd); // закрываемся — новая версия встанет на место и запустится
+                }
             }
             0
         }
@@ -1485,6 +1665,13 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 T_ZFIX => {
                     KillTimer(hwnd, T_ZFIX);
                     a.clock.fix_z();
+                }
+                T_UPDATE => {
+                    KillTimer(hwnd, T_UPDATE);
+                    if a.cfg.update_check {
+                        a.start_update_check(false);
+                        SetTimer(hwnd, T_UPDATE, 24 * 3600 * 1000, None); // и дальше раз в сутки
+                    }
                 }
                 T_LIVE_RETRY => {
                     KillTimer(hwnd, T_LIVE_RETRY);
@@ -1656,6 +1843,41 @@ fn main() {
     // установка и удаление (HoraSetup.exe, «Параметры → Приложения»)
     match args.get(1).map(|s| s.as_str()) {
         Some("--uninstall") => return setup::uninstall(),
+        // замена программы новой версией (см. update.rs)
+        Some("--update-coordinator") => {
+            util::set_log(false);
+            let target = args.get(2).map(PathBuf::from).unwrap_or_default();
+            let pid = args.get(3).and_then(|v| v.parse().ok()).unwrap_or(0);
+            std::process::exit(update::coordinator(target, pid))
+        }
+        // проверка обновления целиком без окна: найти, скачать, проверить подпись, заменить себя
+        Some("--update-selftest") => {
+            let code = match update::check() {
+                Ok(Some(r)) => match update::download(&r).and_then(|e| update::start(&e)) {
+                    Ok(()) => {
+                        log(&format!("обновление {}: скачано, подпись верна, замена запущена", r.version));
+                        0
+                    }
+                    Err(e) => {
+                        log(&format!("обновление {}: {e}", r.version));
+                        2
+                    }
+                },
+                Ok(None) => {
+                    log("обновление: уже последняя версия");
+                    1
+                }
+                Err(e) => {
+                    log(&format!("обновление: {e}"));
+                    3
+                }
+            };
+            std::process::exit(code)
+        }
+        Some("--update-apply-admin") => {
+            util::set_log(false);
+            std::process::exit(update::apply_admin())
+        }
         Some("--uninstall-system") => {
             util::set_log(false); // от администратора журнал в профиль не пишем
             std::process::exit(setup::uninstall_system())
@@ -1815,6 +2037,8 @@ fn main() {
             videos_at: None,
             live_mode: live::Mode::Off,
             banned_favs: Vec::new(),
+            upd: UpdState::Idle,
+            upd_notified: String::new(),
         };
         if first_run {
             app.save_cfg();
@@ -1826,6 +2050,10 @@ fn main() {
         app.refresh_lists();
         app.tray(NIM_ADD, "Hora");
         migrate_autostart();
+        update::cleanup(); // остатки прошлого обновления
+        if app.cfg.update_check {
+            SetTimer(hwnd, T_UPDATE, 30_000, None);
+        }
         APP.with(|a| *a.borrow_mut() = Some(app));
         with_app(|a| {
             let rects: Vec<RECT> = clock::monitors().iter().map(|m| m.rect).collect();

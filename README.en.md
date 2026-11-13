@@ -25,6 +25,7 @@
 - ✨ **Live wallpapers** (optional): snow, rain, stars, falling leaves, fireflies or "match the weather" on top of your regular wallpaper — or **video instead of a picture**, including video wallpapers from the **Wallpaper Engine** Workshop.
 - ♥ **Favorites and a blacklist**: wallpapers you like come back from time to time, ones you don't are never shown again.
 - 🌅 **Topic schedule**: nature in the morning, sunsets in the evening, space at night.
+- 🔄 **One-click updates**: Hora checks GitHub once a day and installs a new version only if its digital signature matches the author's key.
 - 🎞 **Wallpaper transitions**: fade, wipe, circle, blinds — the effects are done by Windows itself.
 
 > **Language:** the settings window, tray menu and installer are in English and Russian — Hora follows your Windows language automatically (switch it in Settings → Other → Language). The clock and the weather widget have their own language setting (Settings → Clock).
@@ -92,10 +93,11 @@ Hora finds Steam and the wallpapers you've subscribed to in the Wallpaper Engine
 
 ## Privacy
 
-Hora talks to just two open services and sends nothing about you:
+Hora talks only to open services and sends nothing about you:
 
 - `wallhaven.cc` — searching and downloading wallpapers (HTTPS only, images only from `w.wallhaven.cc`);
-- `open-meteo.com` — weather and city search (the coordinates of the city you picked).
+- `open-meteo.com` — weather and city search (the coordinates of the city you picked);
+- `api.github.com` / `github.com` — a once-a-day check for a new version and its download (turn it off in Other or with `update_check = 0`).
 
 No telemetry, no accounts, no ads.
 
@@ -108,6 +110,8 @@ powershell -ExecutionPolicy Bypass -File build.ps1     # the program in dist\
 powershell -ExecutionPolicy Bypass -File package.ps1   # installer and portable archive in release\
 cargo test --release                                   # tests
 ```
+
+Releases are signed with an ECDSA P-256 key (`tools/new-signing-key.ps1` — once, `tools/sign-release.ps1` — called by `package.ps1`). The public key is built into `src/update.rs`; an update with a wrong signature is never installed.
 
 <details>
 <summary><b>How it works</b></summary>

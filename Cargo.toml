@@ -1,6 +1,6 @@
 [package]
 name = "wallclock"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 build = "build.rs"
 description = "Hora — лёгкая смена обоев, большие часы и живые обои на рабочем столе Windows"
@@ -34,6 +34,7 @@ features = [
     "Win32_System_Power",
     "Win32_UI_Controls",
     "Win32_Globalization",
+    "Win32_Security_Cryptography",
 ]
 
 # Видеокарта (Direct3D 11, Direct2D, DirectComposition) и видео (Media Foundation) — для живых обоев.

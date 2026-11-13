@@ -48,6 +48,7 @@ pub struct Config {
     pub backdrop_opacity: u32, // непрозрачность подложки, % (100 — сплошная)
     pub ui_theme: String, // тема окна настроек: auto | light | dark
     pub ui_lang: String,  // язык окна и меню: auto (как в Windows) | ru | en
+    pub update_check: bool, // раз в день проверять, нет ли новой версии
     /// Не настройка, а подсказка при рисовании: фон под текстом пёстрый — нужен плотный ореол.
     pub halo: bool,
     // --- погода ---
@@ -112,6 +113,7 @@ impl Default for Config {
             backdrop_opacity: 80,
             ui_theme: "auto".into(),
             ui_lang: "auto".into(),
+            update_check: true,
             halo: false,
             weather: true,
             weather_city: String::new(),
@@ -274,6 +276,7 @@ impl Config {
                 "backdrop" => c.backdrop = v.to_lowercase(),
                 "backdrop_opacity" => c.backdrop_opacity = v.parse::<u32>().unwrap_or(c.backdrop_opacity).clamp(10, 100),
                 "ui_theme" => c.ui_theme = v.to_lowercase(),
+                "update_check" => c.update_check = parse_bool(&v).unwrap_or(c.update_check),
                 "ui_lang" => {
                     let v = v.to_lowercase();
                     c.ui_lang = if matches!(v.as_str(), "auto" | "ru" | "en") { v } else { "auto".into() };
@@ -396,6 +399,8 @@ backdrop_opacity = {backdrop_opacity}
 ui_theme = {ui_theme}
 ; язык окна и меню: auto (как в Windows) | ru | en
 ui_lang = {ui_lang}
+; 1 = раз в день проверять на GitHub, нет ли новой версии (обновление ставится только с верной подписью)
+update_check = {update_check}
 
 [weather]
 ; 1 = показывать виджет погоды на рабочем столе (данные: open-meteo.com, без ключа)
@@ -471,6 +476,7 @@ video_rotate = {video_rotate}
             backdrop_opacity = self.backdrop_opacity,
             ui_theme = self.ui_theme,
             ui_lang = Self::clean(&self.ui_lang),
+            update_check = b(self.update_check),
             weather = b(self.weather),
             weather_city = Self::clean(&self.weather_city),
             weather_lat = self.weather_lat,

@@ -19,6 +19,12 @@ New-Item -ItemType Directory $out | Out-Null
 
 # установщик — та же программа: имя с «Setup» включает режим установки
 Copy-Item target\release\Hora.exe "$out\HoraSetup.exe"
+# подпись для обновлений (программа ставит обновление, только если подпись сходится)
+if (Test-Path (Join-Path $env:USERPROFILE ".hora-signing\update-key.bin")) {
+    & "$PSScriptRoot\tools\sign-release.ps1" "$out\HoraSetup.exe"
+} else {
+    Write-Warning "Нет ключа подписи — выпуск без HoraSetup.exe.sig: установленные копии не примут его как обновление"
+}
 
 # переносная версия
 $p = Join-Path $out "Hora"

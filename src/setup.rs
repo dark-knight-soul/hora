@@ -140,7 +140,7 @@ fn known_folder(id: &windows_sys::core::GUID) -> Option<PathBuf> {
 }
 
 /// Куда ставить: для себя или для всех.
-fn install_dir(all: bool) -> Option<PathBuf> {
+pub(crate) fn install_dir(all: bool) -> Option<PathBuf> {
     known_folder(if all { &FOLDERID_ProgramFiles } else { &FOLDERID_UserProgramFiles }).map(|p| p.join("Hora"))
 }
 
@@ -257,7 +257,7 @@ fn finish(all: bool) {
 }
 
 /// Запустить себя же с правами администратора и дождаться. None — права не подтвердили.
-fn run_elevated(args: &str) -> Option<u32> {
+pub(crate) fn run_elevated(args: &str) -> Option<u32> {
     unsafe {
         let exe = std::env::current_exe().ok()?;
         let file = wide(&exe.to_string_lossy());
@@ -331,7 +331,7 @@ fn root(all: bool) -> HKEY {
     }
 }
 
-fn register_uninstall(all: bool, exe: &Path, dir: &Path) -> Result<(), String> {
+pub(crate) fn register_uninstall(all: bool, exe: &Path, dir: &Path) -> Result<(), String> {
     unsafe {
         let mut key: HKEY = std::ptr::null_mut();
         let r = RegCreateKeyExW(root(all), wide(UNINSTALL_KEY).as_ptr(), 0, std::ptr::null(), 0, KEY_WRITE, std::ptr::null(), &mut key, std::ptr::null_mut());
@@ -474,7 +474,7 @@ fn run_target(name: &str) -> Option<PathBuf> {
     }
 }
 
-fn same_path(a: &Path, b: &Path) -> bool {
+pub(crate) fn same_path(a: &Path, b: &Path) -> bool {
     let norm = |p: &Path| p.to_string_lossy().trim_end_matches('\\').to_lowercase();
     norm(a) == norm(b)
 }

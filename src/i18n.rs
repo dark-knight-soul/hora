@@ -52,6 +52,17 @@ pub fn tr(s: &str) -> &str {
 }
 
 const PAIRS: &[(&str, &str)] = &[
+    ("Проверить обновления", "Check for updates"),
+    ("Что нового", "What's new"),
+    ("Проверять обновления автоматически", "Check for updates automatically"),
+    ("Раз в день спрашивать GitHub, нет ли новой версии", "Once a day, ask GitHub whether a new version is out"),
+    ("Обновления ещё не проверялись", "Updates haven't been checked yet"),
+    ("Проверяю обновления…", "Checking for updates…"),
+    ("У вас последняя версия", "You have the latest version"),
+    ("Доступна новая версия Hora", "A new version of Hora is available"),
+    ("не удалось прочитать ответ GitHub", "could not read GitHub's reply"),
+    ("в новом выпуске нет подписанного установщика", "the new release has no signed installer"),
+    ("подпись обновления не сходится — установка отменена", "the update's signature does not match — installation canceled"),
     ("Выключены", "Off"),
     ("Эффекты поверх обоев", "Effects over wallpaper"),
     ("Видео", "Video"),

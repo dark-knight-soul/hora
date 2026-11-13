@@ -131,6 +131,26 @@ pub fn get_text(url: &str) -> Result<String, String> {
 }
 
 /// Скачивает файл сразу на диск, не держа его целиком в памяти.
+/// Скачать файл (не картинку) на диск: сначала во временный, потом переименовать.
+pub fn download_file(url: &str, dst: &Path, limit: usize) -> Result<(), String> {
+    let r = open(url)?;
+    let tmp = dst.with_extension("part");
+    let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    let res = read_body(&r, limit, |c| f.write_all(c).map_err(|e| e.to_string()));
+    drop(f);
+    match res {
+        Ok(n) if n > 0 => std::fs::rename(&tmp, dst).map_err(|e| e.to_string()),
+        Ok(_) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(tr("скачался пустой файл").into())
+        }
+        Err(e) => {
+            let _ = std::fs::remove_file(&tmp);
+            Err(e)
+        }
+    }
+}
+
 pub fn download(url: &str, dst: &Path) -> Result<(), String> {
     let r = open(url)?;
     let tmp = dst.with_extension("part");

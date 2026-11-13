@@ -315,6 +315,7 @@ struct Img {
 
 // ---------------- состояние окна ----------------
 struct Snap {
+    update: (String, Option<String>, bool), // обновления: состояние, найденная версия, идёт работа
     videos: Vec<(String, bool, bool)>, // найденные видео: (название, выбрано, из Wallpaper Engine)
     videos_total: usize,               // сколько всего найдено
     live_running: bool,                // живые обои сейчас работают
@@ -416,6 +417,22 @@ pub fn close() {
 }
 
 /// Открывает окно настроек (или выводит на передний план, если уже открыто).
+/// Открыть окно настроек на разделе page.
+pub fn open_page(page: usize) {
+    open();
+    UI.with(|u| {
+        if let Some(st) = u.borrow_mut().as_mut() {
+            st.page = page.min(PAGES.len() - 1);
+            st.scroll = 0.0;
+            st.scroll_target = 0.0;
+        }
+    });
+    let h = UI_HWND.with(|c| c.get());
+    if !h.is_null() {
+        unsafe { InvalidateRect(h, std::ptr::null(), 0) };
+    }
+}
+
 pub fn open() {
     with_app(|a| {
         a.refresh_lists();
@@ -658,6 +675,7 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 weather_busy: a.weather_busy,
                 videos: a.videos.iter().take(VPICK_MAX).map(|v| (v.title.clone(), v.path.to_string_lossy() == a.cfg.video.trim(), v.we)).collect(),
                 videos_total: a.videos.len(),
+                update: a.update_view(),
                 live_running: a.live.running(),
                 fav_count: a.fav_names.len(),
                 ban_count: a.banned.len(),
@@ -1198,6 +1216,7 @@ unsafe fn click(hwnd: HWND, id: usize) {
         M_SHADOW => Some(a.cfg.shadow),
         M_WEATHER_ON => Some(a.cfg.weather),
         M_SCHED_ON => Some(a.cfg.schedule),
+        M_UPDATE_AUTO => Some(a.cfg.update_check),
         M_LIVE_BAT => Some(a.cfg.live_battery),
         M_VROT => Some(a.cfg.video_rotate),
         M_AUTOSTART => Some(autostart_enabled()),
@@ -2373,8 +2392,24 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     c.text(x, y, w, p(22.0), &format!("Hora {}", env!("CARGO_PKG_VERSION")), F::H2, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                     c.text(x, y + p(26.0), w, p(20.0), &(if crate::i18n::en() { format!("Memory now: {:.1} MB (with this window open; less after closing it)", mem) } else { format!("Память сейчас: {:.1} МБ (с открытым окном; после закрытия — меньше)", mem) }), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                     c.text(x, y + p(48.0), w, p(20.0), tr("Обои: wallhaven.cc · Погода: open-meteo.com · Шрифты: Google Fonts (OFL)"), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-                    y + p(70.0)
+                    // обновления: состояние и кнопки
+                    let (status, avail, busy) = &sn.update;
+                    let mut y = y + p(80.0);
+                    let col = if status.starts_with("Ошибка") || status.starts_with("Update error") { t_error() } else { t_main() };
+                    c.text(x, y, w, p(22.0), status, F::Body, col, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    y += p(30.0);
+                    if let Some(v) = avail {
+                        let label = if crate::i18n::en() { format!("Update to {v}") } else { format!("Обновить до {v}") };
+                        let b1 = c.btn(x, y, &label, M_UPDATE_NOW, 1, Some(Ic::Next));
+                        c.btn(x + b1 + p(8.0), y, tr("Что нового"), M_UPDATE_PAGE, 0, Some(Ic::File));
+                        y += p(38.0);
+                    } else if !busy {
+                        c.btn(x, y, tr("Проверить обновления"), M_UPDATE_CHECK, 0, Some(Ic::Refresh));
+                        y += p(38.0);
+                    }
+                    y
                 });
+                y = c.toggle(x, y, w, tr("Проверять обновления автоматически"), tr("Раз в день спрашивать GitHub, нет ли новой версии"), sn.cfg.update_check, M_UPDATE_AUTO);
                 c.btn(x, y + p(4.0), tr("Выйти из Hora"), M_EXIT, 2, Some(Ic::Power));
                 y += p(46.0);
                 content_h = y + st.scroll + p(20.0);
