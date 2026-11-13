@@ -10,8 +10,8 @@
 
 [![Скачать](https://img.shields.io/github/v/release/dark-knight-soul/hora?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=E8763A&style=flat-square)](https://github.com/dark-knight-soul/hora/releases/latest)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-1F2433?style=flat-square)
-![Rust](https://img.shields.io/badge/Rust-без%20зависимостей%20в%20рантайме-1F2433?style=flat-square)
-[![Лицензия MIT](https://img.shields.io/badge/лицензия-MIT-1F2433?style=flat-square)](LICENSE)
+![Rust](https://img.shields.io/badge/Rust-%D0%B1%D0%B5%D0%B7%20%D0%B7%D0%B0%D0%B2%D0%B8%D1%81%D0%B8%D0%BC%D0%BE%D1%81%D1%82%D0%B5%D0%B9%20%D0%B2%20%D1%80%D0%B0%D0%BD%D1%82%D0%B0%D0%B9%D0%BC%D0%B5-1F2433?style=flat-square)
+[![Лицензия MIT](https://img.shields.io/badge/%D0%BB%D0%B8%D1%86%D0%B5%D0%BD%D0%B7%D0%B8%D1%8F-MIT-1F2433?style=flat-square)](LICENSE)
 
 <img src="docs/clock-photo.png" width="640" alt="Часы Hora на рабочем столе">
 
