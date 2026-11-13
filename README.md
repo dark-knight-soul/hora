@@ -6,7 +6,7 @@
 
 **Обои, большие часы и погода прямо на рабочем столе Windows — и почти ноль нагрузки**
 
-*Wallpapers, a big desktop clock and weather for Windows — at almost zero cost*
+**Русский** | [English](README.en.md)
 
 [![Скачать](https://img.shields.io/github/v/release/dark-knight-soul/hora?label=%D1%81%D0%BA%D0%B0%D1%87%D0%B0%D1%82%D1%8C&color=E8763A&style=flat-square)](https://github.com/dark-knight-soul/hora/releases/latest)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-1F2433?style=flat-square)
