@@ -7,7 +7,8 @@ $ErrorActionPreference = 'Stop'
 $env:PATH = "$env:USERPROFILE\.cargo\bin;$env:PATH"
 Set-Location $PSScriptRoot
 # пути вида C:\Users\<имя>\.cargo\... не должны попадать внутрь exe (их видно в выпуске)
-$env:CARGO_ENCODED_RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE=~"
+# (эта переменная заменяет rustflags из .cargo\config.toml — поэтому встроенный MinGW указан и здесь; флаги разделяются символом 0x1F)
+$env:CARGO_ENCODED_RUSTFLAGS = "--remap-path-prefix=$env:USERPROFILE=~" + [char]0x1F + "-Clink-self-contained=yes"
 cargo build --release
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 # защита от подмены DLL рядом с exe (см. tools\pe-harden.ps1)

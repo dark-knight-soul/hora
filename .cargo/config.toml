@@ -1,0 +1,5 @@
+# Всегда собирать встроенным в Rust комплектом MinGW (линкер и библиотеки из rustlib/self-contained).
+# Новые MinGW из системы (MSYS2, C:\mingw64 на серверах GitHub) уже содержат _load_config_used,
+# и он конфликтует с нашей структурой из build.rs.
+[target.x86_64-pc-windows-gnu]
+rustflags = ["-Clink-self-contained=yes"]
