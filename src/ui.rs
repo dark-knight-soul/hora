@@ -2,6 +2,7 @@
 // Нарисовано вручную (GDI+ для сглаженных фигур, GDI для текста) — без браузерных движков,
 // поэтому пока окно открыто, программа занимает всего на несколько мегабайт больше,
 // а после закрытия всё освобождается. Каждое действие идёт через тот же код, что и меню в трее.
+use crate::i18n::tr;
 use crate::util::wide;
 use crate::*;
 use std::cell::{Cell, RefCell};
@@ -563,7 +564,7 @@ unsafe fn start_search(hwnd: HWND) {
     UI.with(|u| {
         if let Some(st) = u.borrow_mut().as_mut() {
             st.search_busy = true;
-            st.search_status = "Ищу…".into();
+            st.search_status = tr("Ищу…").into();
             st.results.clear();
         }
     });
@@ -578,7 +579,7 @@ unsafe fn start_search(hwnd: HWND) {
         UI.with(|u| {
             if let Some(st) = u.borrow_mut().as_mut() {
                 st.search_busy = false;
-                st.search_status = "Не удалось начать поиск".into();
+                st.search_status = tr("Не удалось начать поиск").into();
             }
         });
     }
@@ -740,15 +741,15 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                     st.search_busy = false;
                     match r {
                         Ok(list) if list.is_empty() => {
-                            st.search_status = "Ничего не нашлось — попробуйте написать иначе".into();
+                            st.search_status = tr("Ничего не нашлось — попробуйте написать иначе").into();
                             st.results.clear();
                         }
                         Ok(list) => {
-                            st.search_status = "Выберите город:".into();
+                            st.search_status = tr("Выберите город:").into();
                             st.results = list;
                         }
                         Err(e) => {
-                            st.search_status = format!("Не удалось найти: {e}");
+                            st.search_status = if crate::i18n::en() { format!("Search failed: {e}") } else { format!("Не удалось найти: {e}") };
                             st.results.clear();
                         }
                     }
@@ -1782,7 +1783,7 @@ impl<'a> Ctx<'a> {
             self.circle(bx + gw / 2.0, by + gh / 2.0, self.p(3.5), if on { argb(255, 255, 255) } else { grid_dot() });
             self.hit(bx, by, gw, gh, id);
         }
-        let pname = POSITIONS.iter().find(|(v, _)| *v == current).map(|(_, t)| *t).unwrap_or("");
+        let pname = POSITIONS.iter().find(|(v, _)| *v == current).map(|(_, t)| tr(t)).unwrap_or("");
         self.text(x + gw * 3.0 + self.p(44.0), y, w, gh * 3.0 + self.p(24.0), pname, F::Body, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         y + gh * 3.0 + self.p(24.0)
     }
@@ -1968,9 +1969,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
         let mut y = p(28.0) - shift;
         let cfg = &sn.cfg;
         // заголовок раздела и подсказка под ним
-        c.text(x, y, w, p(36.0), PAGES[st.page], F::Title, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        c.text(x, y, w, p(36.0), tr(PAGES[st.page]), F::Title, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         y += p(36.0);
-        c.text(x, y, w, p(20.0), PAGE_HINTS[st.page], F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        c.text(x, y, w, p(20.0), tr(PAGE_HINTS[st.page]), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         y += p(34.0);
         // предпросмотр — для «Часов», «Оформления» и «Погоды»
         let preview = |c: &mut Ctx, y: f32| -> f32 {
@@ -1992,61 +1993,61 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                 let n = if per { mons.len().min(2) } else { 1 };
                 let info_x = x + tw + p(36.0);
                 let info_w = w - tw - p(54.0);
-                c.text(info_x, y + p(22.0), info_w, p(22.0), "Сейчас на рабочем столе", F::H2, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                c.text(info_x, y + p(22.0), info_w, p(22.0), tr("Сейчас на рабочем столе"), F::H2, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                 let names: Vec<String> = sn.current.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect();
                 let names = if names.is_empty() { "—".to_string() } else { names.join(", ") };
                 c.text(info_x, y + p(48.0), info_w, p(20.0), &names, F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                 let next = if cfg.paused {
-                    "Автосмена на паузе".to_string()
+                    tr("Автосмена на паузе").to_string()
                 } else if cfg.interval_min == 0 {
-                    "Автосмена выключена — только вручную".to_string()
+                    tr("Автосмена выключена — только вручную").to_string()
                 } else {
                     let left = (cfg.interval_min as u64 * 60).saturating_sub(util::now_unix().saturating_sub(sn.last_change));
-                    format!("Следующие обои через {} мин", (left + 59) / 60)
+                    if crate::i18n::en() { format!("Next wallpaper in {} min", (left + 59) / 60) } else { format!("Следующие обои через {} мин", (left + 59) / 60) }
                 };
                 c.icon(Ic::Clock, info_x, y + p(78.0), p(18.0), argb_of(t_sec()), card());
                 c.text(info_x + p(26.0), y + p(77.0), info_w, p(20.0), &next, F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-                if sn.status.starts_with("ошибка") {
+                if sn.status.starts_with(tr("ошибка")) {
                     c.text(info_x, y + p(104.0), info_w, p(20.0), &sn.status, F::Small, t_error(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                 }
                 let by = y + card_h - p(56.0);
                 let bx = x + p(18.0);
-                let bw = c.btn(bx, by, "Следующие обои", M_NEXT, 1, Some(Ic::Next));
-                let (fl, fi) = if sn.cur_fav { ("В избранном", Ic::HeartFull) } else { ("В избранное", Ic::Heart) };
+                let bw = c.btn(bx, by, tr("Следующие обои"), M_NEXT, 1, Some(Ic::Next));
+                let (fl, fi) = if sn.cur_fav { (tr("В избранном"), Ic::HeartFull) } else { (tr("В избранное"), Ic::Heart) };
                 let bw2 = c.btn(bx + bw + p(8.0), by, fl, M_FAV, 0, Some(fi));
-                c.btn(bx + bw + bw2 + p(16.0), by, "Не показывать", M_BAN, 0, Some(Ic::Ban));
+                c.btn(bx + bw + bw2 + p(16.0), by, tr("Не показывать"), M_BAN, 0, Some(Ic::Ban));
                 let thumbs_y = y + p(18.0);
                 y += card_h + p(12.0);
-                y = c.toggle(x, y, w, "Пауза автосмены", "Обои не будут меняться сами, пока пауза включена", cfg.paused, M_PAUSE);
+                y = c.toggle(x, y, w, tr("Пауза автосмены"), tr("Обои не будут меняться сами, пока пауза включена"), cfg.paused, M_PAUSE);
 
-                let mixes: Vec<_> = FAV_MIXES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_FAV_MIX + i, cfg.favorites_mix == *v)).collect();
-                let fav_hint = format!("В избранном: {} · скрыто: {}", sn.fav_count, sn.ban_count);
+                let mixes: Vec<_> = FAV_MIXES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_FAV_MIX + i, cfg.favorites_mix == *v)).collect();
+                let fav_hint = if crate::i18n::en() { format!("In favorites: {} · hidden: {}", sn.fav_count, sn.ban_count) } else { format!("В избранном: {} · скрыто: {}", sn.fav_count, sn.ban_count) };
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Избранное и скрытые", &fav_hint);
-                    let y = c.head(x, y + p(4.0), w, "Показывать избранное среди новых обоев", "");
+                    let y = c.head(x, y, w, tr("Избранное и скрытые"), &fav_hint);
+                    let y = c.head(x, y + p(4.0), w, tr("Показывать избранное среди новых обоев"), "");
                     let y = c.chips(x, y, w, &mixes) + p(14.0);
-                    let b1 = c.btn(x, y, "Открыть избранное", M_FAV_DIR, 0, Some(Ic::Heart));
-                    let b2 = c.btn(x + b1 + p(8.0), y, "Моя папка", M_FOLDER, 0, Some(Ic::Folder));
-                    c.btn(x + b1 + b2 + p(16.0), y, "Список скрытых", M_BAN_OPEN, 0, Some(Ic::List));
+                    let b1 = c.btn(x, y, tr("Открыть избранное"), M_FAV_DIR, 0, Some(Ic::Heart));
+                    let b2 = c.btn(x + b1 + p(8.0), y, tr("Моя папка"), M_FOLDER, 0, Some(Ic::Folder));
+                    c.btn(x + b1 + b2 + p(16.0), y, tr("Список скрытых"), M_BAN_OPEN, 0, Some(Ic::List));
                     let mut y = y + p(38.0);
                     if sn.can_undo {
                         y += p(8.0);
-                        c.btn(x, y, "Вернуть последние скрытые", M_BAN_UNDO, 0, Some(Ic::Refresh));
+                        c.btn(x, y, tr("Вернуть последние скрытые"), M_BAN_UNDO, 0, Some(Ic::Refresh));
                         y += p(38.0);
                     }
                     y
                 });
 
-                let items: Vec<_> = SOURCES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_SOURCE + i, cfg.source == *v)).collect();
-                y = c.group(x, y, w, "Откуда брать обои", "", &items);
-                let items: Vec<_> = INTERVALS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_INTERVAL + i, cfg.interval_min == *v)).collect();
-                y = c.group(x, y, w, "Менять каждые", "", &items);
-                let anims: Vec<_> = ANIMS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_ANIM + i, cfg.anim == *v)).collect();
-                let speeds: Vec<_> = ANIM_SPEEDS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_ANIM_SPEED + i, cfg.anim_ms == *v)).collect();
+                let items: Vec<_> = SOURCES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_SOURCE + i, cfg.source == *v)).collect();
+                y = c.group(x, y, w, tr("Откуда брать обои"), "", &items);
+                let items: Vec<_> = INTERVALS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_INTERVAL + i, cfg.interval_min == *v)).collect();
+                y = c.group(x, y, w, tr("Менять каждые"), "", &items);
+                let anims: Vec<_> = ANIMS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_ANIM + i, cfg.anim == *v)).collect();
+                let speeds: Vec<_> = ANIM_SPEEDS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_ANIM_SPEED + i, cfg.anim_ms == *v)).collect();
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Анимация смены", "Эффекты делает сама Windows — процессор почти не тратится");
+                    let y = c.head(x, y, w, tr("Анимация смены"), tr("Эффекты делает сама Windows — процессор почти не тратится"));
                     let y = c.chips(x, y, w, &anims) + p(14.0);
-                    let y = c.head(x, y, w, "Скорость", "");
+                    let y = c.head(x, y, w, tr("Скорость"), "");
                     c.chips(x, y, w, &speeds)
                 });
 
@@ -2069,34 +2070,34 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
             // ---------------- Категории ----------------
             1 => {
                 let chosen: Vec<&str> = cfg.topics.split(',').filter(|s| !s.is_empty()).collect();
-                let mut items = vec![("Любые (популярное)".to_string(), M_TOPIC_ANY, chosen.is_empty() && cfg.query.trim().is_empty())];
-                items.extend(wallpaper::TOPICS.iter().enumerate().map(|(i, t)| (t.1.to_string(), M_TOPIC + i, chosen.contains(&t.0))));
-                y = c.group(x, y, w, "Темы", "Каждый раз берётся случайная из отмеченных. Картинки — wallhaven.cc", &items);
+                let mut items = vec![(tr("Любые (популярное)").to_string(), M_TOPIC_ANY, chosen.is_empty() && cfg.query.trim().is_empty())];
+                items.extend(wallpaper::TOPICS.iter().enumerate().map(|(i, t)| (tr(t.1).to_string(), M_TOPIC + i, chosen.contains(&t.0))));
+                y = c.group(x, y, w, tr("Темы"), tr("Каждый раз берётся случайная из отмеченных. Картинки — wallhaven.cc"), &items);
                 if chosen.is_empty() && !cfg.query.trim().is_empty() {
-                    c.text(x + p(4.0), y, w, p(20.0), &format!("Сейчас действует свой запрос из config.ini: «{}»", cfg.query.trim()), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    c.text(x + p(4.0), y, w, p(20.0), &(if crate::i18n::en() { format!("A custom query from config.ini is active: \"{}\"", cfg.query.trim()) } else { format!("Сейчас действует свой запрос из config.ini: «{}»", cfg.query.trim()) }), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                     y += p(26.0);
                 }
                 if cfg.source == "folder" {
-                    c.text(x + p(4.0), y, w, p(20.0), "Сейчас обои берутся из вашей папки — выбор темы переключит источник на Wallhaven.", F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    c.text(x + p(4.0), y, w, p(20.0), tr("Сейчас обои берутся из вашей папки — выбор темы переключит источник на Wallhaven."), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                     y += p(26.0);
                 }
 
                 // ---- расписание: свои категории на утро, день, вечер и ночь ----
-                y = c.toggle(x, y, w, "Менять темы по времени суток", "Утром природа, вечером закаты, ночью космос — обои меняются сами", cfg.schedule, M_SCHED_ON);
+                y = c.toggle(x, y, w, tr("Менять темы по времени суток"), tr("Утром природа, вечером закаты, ночью космос — обои меняются сами"), cfg.schedule, M_SCHED_ON);
                 if cfg.schedule {
                     let hours = cfg.slot_hours();
                     let now = cfg.slot_at(clock_hour());
                     for slot in 0..4 {
                         let chosen: Vec<&str> = cfg.topics_slot[slot].split(',').filter(|s| !s.is_empty()).collect();
                         let base = M_SCHED + slot * 20;
-                        let mut items = vec![("Как основные".to_string(), base + SCHED_SAME, chosen.is_empty())];
-                        items.extend(wallpaper::TOPICS.iter().enumerate().map(|(i, t)| (t.1.to_string(), base + i, chosen.contains(&t.0))));
+                        let mut items = vec![(tr("Как основные").to_string(), base + SCHED_SAME, chosen.is_empty())];
+                        items.extend(wallpaper::TOPICS.iter().enumerate().map(|(i, t)| (tr(t.1).to_string(), base + i, chosen.contains(&t.0))));
                         let (from, to) = (hours[slot], if slot == 3 { hours[0] } else { hours[slot + 1] });
-                        let title = format!("{} · {}:00–{}:00{}", config::SLOTS[slot], from % 24, to % 24, if slot == now { " — сейчас" } else { "" });
-                        let hint = if chosen.is_empty() { "Берутся основные темы, отмеченные выше" } else { "" };
+                        let title = format!("{} · {}:00–{}:00{}", tr(config::SLOTS[slot]), from % 24, to % 24, if slot == now { tr(" — сейчас") } else { "" });
+                        let hint = if chosen.is_empty() { tr("Берутся основные темы, отмеченные выше") } else { "" };
                         y = c.group(x, y, w, &title, hint, &items);
                     }
-                    c.text(x + p(4.0), y, w, p(20.0), "Часы начала утра, дня, вечера и ночи меняются в config.ini (schedule_hours).", F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    c.text(x + p(4.0), y, w, p(20.0), tr("Часы начала утра, дня, вечера и ночи меняются в config.ini (schedule_hours)."), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                     y += p(26.0);
                 }
                 content_h = y + st.scroll + p(20.0);
@@ -2104,22 +2105,22 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
             // ---------------- Часы ----------------
             2 => {
                 y = preview(&mut c, y);
-                y = c.toggle(x, y, w, "Показывать часы", "Большие часы на рабочем столе, под иконками", cfg.clock, M_CLOCK_ON);
-                let items: Vec<_> = STYLES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_STYLE + i, cfg.style == *v)).collect();
-                y = c.group(x, y, w, "Стиль", "", &items);
-                y = c.toggle(x, y, w, "Секунды", "Часы обновляются раз в секунду вместо раза в минуту", cfg.seconds, M_SECONDS);
-                y = c.toggle(x, y, w, "24-часовой формат", "", cfg.is_24h(), M_H24);
-                y = c.toggle(x, y, w, "Тень под текстом", "Помогает читать часы на светлых обоях", cfg.shadow, M_SHADOW);
-                let items: Vec<_> = LANGS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_LANG + i, cfg.lang == *v)).collect();
-                y = c.group(x, y, w, "Язык", "", &items);
+                y = c.toggle(x, y, w, tr("Показывать часы"), tr("Большие часы на рабочем столе, под иконками"), cfg.clock, M_CLOCK_ON);
+                let items: Vec<_> = STYLES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_STYLE + i, cfg.style == *v)).collect();
+                y = c.group(x, y, w, tr("Стиль"), "", &items);
+                y = c.toggle(x, y, w, tr("Секунды"), tr("Часы обновляются раз в секунду вместо раза в минуту"), cfg.seconds, M_SECONDS);
+                y = c.toggle(x, y, w, tr("24-часовой формат"), "", cfg.is_24h(), M_H24);
+                y = c.toggle(x, y, w, tr("Тень под текстом"), tr("Помогает читать часы на светлых обоях"), cfg.shadow, M_SHADOW);
+                let items: Vec<_> = LANGS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_LANG + i, cfg.lang == *v)).collect();
+                y = c.group(x, y, w, tr("Язык"), "", &items);
                 content_h = y + st.scroll + p(20.0);
             }
             // ---------------- Оформление ----------------
             3 => {
                 y = preview(&mut c, y);
-                let cname = COLORS.iter().find(|(v, _)| *v == cfg.color).map(|(_, t)| *t).unwrap_or("свой цвет из config.ini");
+                let cname = COLORS.iter().find(|(v, _)| *v == cfg.color).map(|(_, t)| tr(t)).unwrap_or(tr("свой цвет из config.ini"));
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Цвет", cname);
+                    let y = c.head(x, y, w, tr("Цвет"), cname);
                     let r = p(15.0);
                     let step = r * 2.0 + p(12.0);
                     let per_row = ((w + p(12.0)) / step).floor().max(1.0) as usize;
@@ -2145,15 +2146,15 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     let rows = (COLORS.len() + per_row - 1) / per_row;
                     y + rows as f32 * step + p(2.0)
                 });
-                let items: Vec<_> = BACKDROPS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_BACKDROP + i, cfg.backdrop == *v)).collect();
+                let items: Vec<_> = BACKDROPS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_BACKDROP + i, cfg.backdrop == *v)).collect();
                 let transp = 100 - cfg.backdrop_opacity.clamp(10, 100);
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Подложка под часами", "Матовое стекло: размытые обои под текстом — читается на любом фоне");
+                    let y = c.head(x, y, w, tr("Подложка под часами"), tr("Матовое стекло: размытые обои под текстом — читается на любом фоне"));
                     let mut y = c.chips(x, y, w, &items);
                     if cfg.backdrop != "off" {
                         // ползунок прозрачности: 0% — плотное стекло, 90% — почти невидимое
                         y += p(16.0);
-                        c.text(x, y, w, p(22.0), "Прозрачность подложки", F::Body, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                        c.text(x, y, w, p(22.0), tr("Прозрачность подложки"), F::Body, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                         c.text(x, y, w, p(22.0), &format!("{transp}%"), F::Body, t_sec(), DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
                         y += p(28.0);
                         c.slider(x, y, w, transp as f32 / 90.0, SLIDER_PLATE);
@@ -2162,33 +2163,33 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     y
                 });
                 let items: Vec<_> = OPACITIES.iter().enumerate().map(|(i, v)| (format!("{v}%"), M_OPACITY + i, cfg.opacity == *v)).collect();
-                y = c.group(x, y, w, "Непрозрачность", "", &items);
+                y = c.group(x, y, w, tr("Непрозрачность"), "", &items);
                 let items: Vec<_> = SCALES.iter().enumerate().map(|(i, v)| (format!("{v}%"), M_SCALE + i, cfg.scale == *v)).collect();
-                y = c.group(x, y, w, "Размер", "", &items);
+                y = c.group(x, y, w, tr("Размер"), "", &items);
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Положение на экране", "");
+                    let y = c.head(x, y, w, tr("Положение на экране"), "");
                     c.pos_grid(x, y, w, &cfg.position, M_POS)
                 });
                 let cur = if cfg.font.is_empty() { "auto" } else { cfg.font.as_str() };
-                let items: Vec<_> = FONTS.iter().enumerate().filter(|(_, (v, _))| !v.is_empty()).map(|(i, (v, t))| (t.split(" — ").next().unwrap_or(t).to_string(), M_FONT + i, cur.eq_ignore_ascii_case(v))).collect();
-                y = c.group(x, y, w, "Шрифт времени", "Michroma — только латиница; для русского выбирайте любой другой", &items);
+                let items: Vec<_> = FONTS.iter().enumerate().filter(|(_, (v, _))| !v.is_empty()).map(|(i, (v, t))| (tr(t).split(" — ").next().unwrap_or(t).to_string(), M_FONT + i, cur.eq_ignore_ascii_case(v))).collect();
+                y = c.group(x, y, w, tr("Шрифт времени"), tr("Michroma — только латиница; для русского выбирайте любой другой"), &items);
                 let cur2 = if cfg.font2.is_empty() { "auto" } else { cfg.font2.as_str() };
-                let items: Vec<_> = FONTS2.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_FONT2 + i, cur2.eq_ignore_ascii_case(v))).collect();
-                y = c.group(x, y, w, "Шрифт подписей", "Дата и день недели", &items);
+                let items: Vec<_> = FONTS2.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_FONT2 + i, cur2.eq_ignore_ascii_case(v))).collect();
+                y = c.group(x, y, w, tr("Шрифт подписей"), tr("Дата и день недели"), &items);
                 content_h = y + st.scroll + p(20.0);
             }
             // ---------------- Погода ----------------
             P_WEATHER => {
                 y = preview(&mut c, y);
-                y = c.toggle(x, y, w, "Показывать погоду", "Данные open-meteo.com, обновление раз в 30 минут", cfg.weather, M_WEATHER_ON);
+                y = c.toggle(x, y, w, tr("Показывать погоду"), tr("Данные open-meteo.com, обновление раз в 30 минут"), cfg.weather, M_WEATHER_ON);
 
                 // город: поле ввода + «Найти» + найденные варианты
-                let cur = if cfg.weather_city.is_empty() { "Город не выбран — найдите его ниже".to_string() } else { format!("Сейчас: {}", cfg.weather_city) };
+                let cur = if cfg.weather_city.is_empty() { tr("Город не выбран — найдите его ниже").to_string() } else { if crate::i18n::en() { format!("Now: {}", cfg.weather_city) } else { format!("Сейчас: {}", cfg.weather_city) } };
                 let mut edit_at: Option<RECT> = None;
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let mut y = c.head(x, y, w, "Город", &cur);
+                    let mut y = c.head(x, y, w, tr("Город"), &cur);
                     let ih = p(40.0);
-                    let bw_ = c.text_w("Найти", F::Body) + p(40.0) + p(26.0);
+                    let bw_ = c.text_w(tr("Найти"), F::Body) + p(40.0) + p(26.0);
                     let iw = (w - bw_ - p(8.0)).min(p(420.0));
                     c.fill_rr(x, y, iw, ih, ih / 2.0, bg());
                     c.stroke_rr(x + 0.5, y + 0.5, iw - 1.0, ih - 1.0, ih / 2.0, border(), 1.0);
@@ -2198,9 +2199,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     if !c.dry && c.visible(y, ih) {
                         edit_at = Some(RECT { left: (x + p(40.0)) as i32, top: (y + (ih - fh) / 2.0) as i32, right: (x + iw - p(16.0)) as i32, bottom: (y + (ih + fh) / 2.0) as i32 });
                     }
-                    c.btn(x + iw + p(8.0), y + (ih - p(38.0)) / 2.0, "Найти", CITY_SEARCH, 1, Some(Ic::Search));
+                    c.btn(x + iw + p(8.0), y + (ih - p(38.0)) / 2.0, tr("Найти"), CITY_SEARCH, 1, Some(Ic::Search));
                     y += ih + p(8.0);
-                    c.text(x + p(4.0), y, w, p(20.0), "Напишите город на русском или английском и нажмите Enter", F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                    c.text(x + p(4.0), y, w, p(20.0), tr("Напишите город на русском или английском и нажмите Enter"), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                     y += p(22.0);
                     if !search_status.is_empty() {
                         y += p(6.0);
@@ -2217,63 +2218,63 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
 
                 // текущая погода
                 let now_text = match &sn.weather {
-                    Some(wd) => format!("{}  ·  {}", weather::deg(wd.temp), weather::describe(wd.code, cfg.lang == "en")),
-                    None if sn.weather_busy => "Загружаю…".to_string(),
-                    None if cfg.weather_city.is_empty() => "Сначала выберите город".to_string(),
-                    None => "Нет данных".to_string(),
+                    Some(wd) => format!("{}  ·  {}", weather::deg(wd.temp), weather::describe(wd.code, crate::i18n::en())),
+                    None if sn.weather_busy => tr("Загружаю…").to_string(),
+                    None if cfg.weather_city.is_empty() => tr("Сначала выберите город").to_string(),
+                    None => tr("Нет данных").to_string(),
                 };
                 let upd = match &sn.weather {
-                    Some(wd) => format!("обновлено в {:02}:{:02}", wd.fetched.0, wd.fetched.1),
+                    Some(wd) => if crate::i18n::en() { format!("updated at {:02}:{:02}", wd.fetched.0, wd.fetched.1) } else { format!("обновлено в {:02}:{:02}", wd.fetched.0, wd.fetched.1) },
                     None => String::new(),
                 };
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let rb = c.text_w("Обновить", F::Body) + p(40.0) + p(26.0);
+                    let rb = c.text_w(tr("Обновить"), F::Body) + p(40.0) + p(26.0);
                     c.icon(Ic::Cloud, x, y + p(4.0), p(28.0), argb_of(t_main()), card());
                     c.text(x + p(40.0), y, w - rb - p(48.0), p(22.0), &now_text, F::H2, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                     c.text(x + p(40.0), y + p(22.0), w - rb - p(48.0), p(18.0), &upd, F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                     if !cfg.weather_city.is_empty() {
-                        c.btn(x + w - rb, y, "Обновить", M_WEATHER_REFRESH, 0, Some(Ic::Refresh));
+                        c.btn(x + w - rb, y, tr("Обновить"), M_WEATHER_REFRESH, 0, Some(Ic::Refresh));
                     }
                     let mut y = y + p(40.0);
                     if !sn.weather_status.is_empty() {
-                        c.text(x, y + p(6.0), w, p(20.0), &format!("Ошибка: {}", sn.weather_status), F::Small, t_error(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                        c.text(x, y + p(6.0), w, p(20.0), &(if crate::i18n::en() { format!("Error: {}", sn.weather_status) } else { format!("Ошибка: {}", sn.weather_status) }), F::Small, t_error(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                         y += p(28.0);
                     }
                     y
                 });
 
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Положение на экране", "Можно поставить в другой угол, чем часы");
+                    let y = c.head(x, y, w, tr("Положение на экране"), tr("Можно поставить в другой угол, чем часы"));
                     c.pos_grid(x, y, w, &cfg.weather_position, M_WPOS)
                 });
                 let mons = clock::monitors();
                 if mons.len() > 1 {
-                    let items: Vec<_> = CLOCK_MONS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_WMON + i, cfg.weather_monitor == *v)).collect();
-                    y = c.group(x, y, w, "На мониторе", "", &items);
+                    let items: Vec<_> = CLOCK_MONS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_WMON + i, cfg.weather_monitor == *v)).collect();
+                    y = c.group(x, y, w, tr("На мониторе"), "", &items);
                 }
                 let items: Vec<_> = SCALES.iter().enumerate().map(|(i, v)| (format!("{v}%"), M_WSCALE + i, cfg.weather_scale == *v)).collect();
-                y = c.group(x, y, w, "Размер", "", &items);
+                y = c.group(x, y, w, tr("Размер"), "", &items);
                 content_h = y + st.scroll + p(20.0);
             }
             // ---------------- Мониторы ----------------
             P_LIVE => {
-                let modes: Vec<_> = LIVE_MODES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_LIVE + i, cfg.live == *v)).collect();
+                let modes: Vec<_> = LIVE_MODES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_LIVE + i, cfg.live == *v)).collect();
                 let status = match (cfg.live.as_str(), sn.live_running) {
-                    ("off", _) => "Выключены — программа занимает минимум памяти".to_string(),
-                    (_, true) => "Работают. Замирают, когда рабочий стол закрыт окнами или экран заблокирован".to_string(),
-                    _ => "Запускаются…".to_string(),
+                    ("off", _) => tr("Выключены — программа занимает минимум памяти").to_string(),
+                    (_, true) => tr("Работают. Замирают, когда рабочий стол закрыт окнами или экран заблокирован").to_string(),
+                    _ => tr("Запускаются…").to_string(),
                 };
-                y = c.group(x, y, w, "Живые обои", &status, &modes);
+                y = c.group(x, y, w, tr("Живые обои"), &status, &modes);
                 if cfg.live == "effects" {
-                    let fx: Vec<_> = LIVE_EFFECTS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_LIVE_FX + i, cfg.live_effect == *v)).collect();
-                    let hint = if cfg.live_effect == "weather" { "По погоде: в снегопад — снег, в дождь — дождь, ясной ночью — звёзды" } else { "Рисуется поверх обычных обоев и часов" };
-                    y = c.group(x, y, w, "Эффект", hint, &fx);
-                    let dens: Vec<_> = LIVE_DENSITY.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_LIVE_DENS + i, cfg.live_density == *v)).collect();
-                    y = c.group(x, y, w, "Сколько", "", &dens);
+                    let fx: Vec<_> = LIVE_EFFECTS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_LIVE_FX + i, cfg.live_effect == *v)).collect();
+                    let hint = if cfg.live_effect == "weather" { tr("По погоде: в снегопад — снег, в дождь — дождь, ясной ночью — звёзды") } else { tr("Рисуется поверх обычных обоев и часов") };
+                    y = c.group(x, y, w, tr("Эффект"), hint, &fx);
+                    let dens: Vec<_> = LIVE_DENSITY.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_LIVE_DENS + i, cfg.live_density == *v)).collect();
+                    y = c.group(x, y, w, tr("Сколько"), "", &dens);
                 }
                 if cfg.live == "video" {
-                    let srcs: Vec<_> = VIDEO_SOURCES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_VSRC + i, cfg.video_source == *v)).collect();
-                    y = c.group(x, y, w, "Откуда брать видео", "Из Wallpaper Engine берутся только видеообои — сцены и веб-обои он показывает сам", &srcs);
+                    let srcs: Vec<_> = VIDEO_SOURCES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_VSRC + i, cfg.video_source == *v)).collect();
+                    y = c.group(x, y, w, tr("Откуда брать видео"), tr("Из Wallpaper Engine берутся только видеообои — сцены и веб-обои он показывает сам"), &srcs);
                     let list: Vec<_> = sn
                         .videos
                         .iter()
@@ -2290,23 +2291,23 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                         })
                         .collect();
                     let found = if list.is_empty() {
-                        "Пока ничего: положите mp4 или webm в папку с видео либо подпишитесь на видеообои в Wallpaper Engine".to_string()
+                        tr("Пока ничего: положите mp4 или webm в папку с видео либо подпишитесь на видеообои в Wallpaper Engine").to_string()
                     } else if sn.videos_total > list.len() {
-                        format!("Найдено: {}, показаны первые {}. Остальные — кнопкой «Следующее видео»", sn.videos_total, list.len())
+                        if crate::i18n::en() { format!("Found: {}, showing the first {}. Use \"Next video\" for the rest", sn.videos_total, list.len()) } else { format!("Найдено: {}, показаны первые {}. Остальные — кнопкой «Следующее видео»", sn.videos_total, list.len()) }
                     } else {
-                        format!("Найдено: {}. Нажмите, чтобы поставить", list.len())
+                        if crate::i18n::en() { format!("Found: {}. Click one to set it", list.len()) } else { format!("Найдено: {}. Нажмите, чтобы поставить", list.len()) }
                     };
                     y = c.card(x, y, w, |c, x, y, w| {
-                        let y = c.head(x, y, w, "Видео", &found);
+                        let y = c.head(x, y, w, tr("Видео"), &found);
                         let y = if list.is_empty() { y } else { c.chips(x, y, w, &list) + p(14.0) };
-                        let b1 = c.btn(x, y, "Следующее видео", M_VNEXT, 1, Some(Ic::Next));
-                        c.btn(x + b1 + p(8.0), y, "Папка с видео", M_VDIR, 0, Some(Ic::Folder));
+                        let b1 = c.btn(x, y, tr("Следующее видео"), M_VNEXT, 1, Some(Ic::Next));
+                        c.btn(x + b1 + p(8.0), y, tr("Папка с видео"), M_VDIR, 0, Some(Ic::Folder));
                         y + p(38.0)
                     });
-                    y = c.toggle(x, y, w, "Менять видео вместе с обоями", "С тем же интервалом, что и обычные обои (раздел «Обои»)", cfg.video_rotate, M_VROT);
+                    y = c.toggle(x, y, w, tr("Менять видео вместе с обоями"), tr("С тем же интервалом, что и обычные обои (раздел «Обои»)"), cfg.video_rotate, M_VROT);
                 }
                 if cfg.live != "off" {
-                    y = c.toggle(x, y, w, "Замирать от батареи", "На ноутбуке без зарядки живые обои не тратят заряд", cfg.live_battery, M_LIVE_BAT);
+                    y = c.toggle(x, y, w, tr("Замирать от батареи"), tr("На ноутбуке без зарядки живые обои не тратят заряд"), cfg.live_battery, M_LIVE_BAT);
                 }
                 content_h = y + st.scroll + p(20.0);
             }
@@ -2334,51 +2335,53 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     }
                     let clock_here = clock::clock_targets(cfg, &mons).contains(i) && cfg.clock;
                     c.stroke_rr(*mx, *my, *mw, *mh, p(10.0), if clock_here { accent() } else { mon_frame() }, p(2.0));
-                    let label = format!("{}{}  ·  {}×{}", i + 1, if m.primary { " (основной)" } else { "" }, m.rect.right - m.rect.left, m.rect.bottom - m.rect.top);
+                    let label = format!("{}{}  ·  {}×{}", i + 1, if m.primary { tr(" (основной)") } else { "" }, m.rect.right - m.rect.left, m.rect.bottom - m.rect.top);
                     let lw = c.text_w(&label, F::Small) + p(18.0);
                     c.fill_rr(*mx + p(8.0), *my + p(8.0), lw, p(24.0), p(12.0), argb(16, 16, 20));
                     c.text(*mx + p(8.0), *my + p(8.0), lw, p(24.0), &label, F::Small, rgb(236, 236, 241), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                 }
                 y += box_h + p(10.0);
-                c.text(x + p(4.0), y, w, p(20.0), "Синяя рамка — мониторы, на которых сейчас показываются часы", F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                c.text(x + p(4.0), y, w, p(20.0), tr("Цветная рамка — мониторы, на которых сейчас показываются часы"), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                 y += p(30.0);
                 if mons.len() > 1 {
-                    let items: Vec<_> = CLOCK_MONS.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_CLOCK_MON + i, cfg.clock_monitor == *v)).collect();
-                    y = c.group(x, y, w, "Часы на мониторе", "", &items);
-                    let items: Vec<_> = WALL_MODES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_WALL_MODE + i, cfg.wall_mode == *v)).collect();
-                    y = c.group(x, y, w, "Обои на мониторах", "Единые — одна широкая картинка продолжается с экрана на экран", &items);
+                    let items: Vec<_> = CLOCK_MONS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_CLOCK_MON + i, cfg.clock_monitor == *v)).collect();
+                    y = c.group(x, y, w, tr("Часы на мониторе"), "", &items);
+                    let items: Vec<_> = WALL_MODES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_WALL_MODE + i, cfg.wall_mode == *v)).collect();
+                    y = c.group(x, y, w, tr("Обои на мониторах"), tr("Единые — одна широкая картинка продолжается с экрана на экран"), &items);
                 } else {
-                    c.text(x + p(4.0), y, w, p(20.0), "Подключён один монитор — дополнительные настройки появятся, когда подключите второй.", F::Body, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                    c.text(x + p(4.0), y, w, p(20.0), tr("Подключён один монитор — дополнительные настройки появятся, когда подключите второй."), F::Body, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
                     y += p(24.0);
                 }
                 content_h = y + st.scroll + p(20.0);
             }
             // ---------------- Прочее ----------------
             _ => {
-                y = c.toggle(x, y, w, "Запускать вместе с Windows", "Hora будет стартовать сама при входе в систему", sn.autostart, M_AUTOSTART);
-                let items: Vec<_> = UI_THEMES.iter().enumerate().map(|(i, (v, t))| (t.to_string(), M_UI_THEME + i, sn.cfg.ui_theme == *v)).collect();
-                y = c.group(x, y, w, "Тема окна", "«Как в Windows» — следует за светлым или тёмным режимом системы", &items);
+                y = c.toggle(x, y, w, tr("Запускать вместе с Windows"), tr("Hora будет стартовать сама при входе в систему"), sn.autostart, M_AUTOSTART);
+                let items: Vec<_> = UI_THEMES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_UI_THEME + i, sn.cfg.ui_theme == *v)).collect();
+                y = c.group(x, y, w, tr("Тема окна"), tr("«Как в Windows» — следует за светлым или тёмным режимом системы"), &items);
+                let langs: Vec<_> = UI_LANGS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_UI_LANG + i, sn.cfg.ui_lang == *v)).collect();
+                y = c.group(x, y, w, "Язык интерфейса · Language", tr("Язык окна и меню (часы — в разделе «Часы»)"), &langs);
                 y = c.card(x, y, w, |c, x, y, w| {
-                    let y = c.head(x, y, w, "Файлы", "");
-                    let b1 = c.btn(x, y, "Все настройки", M_CONFIG, 0, Some(Ic::File));
-                    let b2 = c.btn(x + b1 + p(8.0), y, "Журнал", M_OPEN_LOG, 0, Some(Ic::List));
-                    c.btn(x + b1 + b2 + p(16.0), y, "Папка программы", M_OPEN_DIR, 0, Some(Ic::Folder));
+                    let y = c.head(x, y, w, tr("Файлы"), "");
+                    let b1 = c.btn(x, y, tr("Все настройки"), M_CONFIG, 0, Some(Ic::File));
+                    let b2 = c.btn(x + b1 + p(8.0), y, tr("Журнал"), M_OPEN_LOG, 0, Some(Ic::List));
+                    c.btn(x + b1 + b2 + p(16.0), y, tr("Папка программы"), M_OPEN_DIR, 0, Some(Ic::Folder));
                     y + p(38.0)
                 });
                 let mem = memory_mb();
                 y = c.card(x, y, w, |c, x, y, w| {
                     c.text(x, y, w, p(22.0), &format!("Hora {}", env!("CARGO_PKG_VERSION")), F::H2, t_main(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-                    c.text(x, y + p(26.0), w, p(20.0), &format!("Память сейчас: {:.1} МБ (с открытым окном; после закрытия — меньше)", mem), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-                    c.text(x, y + p(48.0), w, p(20.0), "Обои: wallhaven.cc · Погода: open-meteo.com · Шрифты: Google Fonts (OFL)", F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+                    c.text(x, y + p(26.0), w, p(20.0), &(if crate::i18n::en() { format!("Memory now: {:.1} MB (with this window open; less after closing it)", mem) } else { format!("Память сейчас: {:.1} МБ (с открытым окном; после закрытия — меньше)", mem) }), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                    c.text(x, y + p(48.0), w, p(20.0), tr("Обои: wallhaven.cc · Погода: open-meteo.com · Шрифты: Google Fonts (OFL)"), F::Small, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
                     y + p(70.0)
                 });
-                c.btn(x, y + p(4.0), "Выйти из WallClock", M_EXIT, 2, Some(Ic::Power));
+                c.btn(x, y + p(4.0), tr("Выйти из Hora"), M_EXIT, 2, Some(Ic::Power));
                 y += p(46.0);
                 content_h = y + st.scroll + p(20.0);
             }
         }
     } else {
-        c.text(cx0, p(28.0), p(400.0), p(36.0), "Загрузка…", F::Title, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        c.text(cx0, p(28.0), p(400.0), p(36.0), tr("Загрузка…"), F::Title, t_sec(), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
 
     // полоса прокрутки
@@ -2411,12 +2414,12 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
         }
         let icol = if active { accent() } else { argb_of(t_sec()) };
         c.icon(PAGE_ICONS[i], nx + p(16.0), ny + (nh - p(20.0)) / 2.0, p(20.0), icol, fill);
-        c.text(nx + p(48.0), ny, nw - p(52.0), nh, name, F::Body, if active { t_main() } else { t_sec() }, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        c.text(nx + p(48.0), ny, nw - p(52.0), nh, tr(name), F::Body, if active { t_main() } else { t_sec() }, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
         c.hit(nx, ny, nw, nh, id);
         ny += nh + p(4.0);
     }
     // внизу — сколько памяти занимает программа (маленькая «таблетка»)
-    let mem = format!("Память: {:.1} МБ", memory_mb());
+    let mem = if crate::i18n::en() { format!("Memory: {:.1} MB", memory_mb()) } else { format!("Память: {:.1} МБ", memory_mb()) };
     let mw = c.text_w(&mem, F::Small) + p(24.0);
     c.fill_rr(p(20.0), ch as f32 - p(48.0), mw, p(28.0), p(14.0), nav_hover());
     c.text(p(20.0), ch as f32 - p(48.0), mw, p(28.0), &mem, F::Small, t_sec(), DT_CENTER | DT_VCENTER | DT_SINGLELINE);

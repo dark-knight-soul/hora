@@ -47,6 +47,7 @@ pub struct Config {
     pub backdrop: String, // подложка под часами: off | on | auto (только на пёстром фоне)
     pub backdrop_opacity: u32, // непрозрачность подложки, % (100 — сплошная)
     pub ui_theme: String, // тема окна настроек: auto | light | dark
+    pub ui_lang: String,  // язык окна и меню: auto (как в Windows) | ru | en
     /// Не настройка, а подсказка при рисовании: фон под текстом пёстрый — нужен плотный ореол.
     pub halo: bool,
     // --- погода ---
@@ -104,12 +105,13 @@ impl Default for Config {
             offset_x: 0,
             offset_y: -4,
             seconds: false,
-            lang: "ru".into(),
+            lang: if crate::i18n::system_ru() { "ru".into() } else { "en".into() },
             time_format: "auto".into(),
             shadow: true,
             backdrop: "off".into(),
             backdrop_opacity: 80,
             ui_theme: "auto".into(),
+            ui_lang: "auto".into(),
             halo: false,
             weather: true,
             weather_city: String::new(),
@@ -272,6 +274,10 @@ impl Config {
                 "backdrop" => c.backdrop = v.to_lowercase(),
                 "backdrop_opacity" => c.backdrop_opacity = v.parse::<u32>().unwrap_or(c.backdrop_opacity).clamp(10, 100),
                 "ui_theme" => c.ui_theme = v.to_lowercase(),
+                "ui_lang" => {
+                    let v = v.to_lowercase();
+                    c.ui_lang = if matches!(v.as_str(), "auto" | "ru" | "en") { v } else { "auto".into() };
+                }
                 "weather" => c.weather = parse_bool(&v).unwrap_or(c.weather),
                 "weather_city" => c.weather_city = v,
                 "weather_lat" => c.weather_lat = v.parse::<f64>().ok().filter(|x| x.is_finite() && (-90.0..=90.0).contains(x)).unwrap_or(c.weather_lat),
@@ -388,6 +394,8 @@ backdrop_opacity = {backdrop_opacity}
 [window]
 ; тема окна настроек: auto (как в Windows) | light (светлая) | dark (тёмная)
 ui_theme = {ui_theme}
+; язык окна и меню: auto (как в Windows) | ru | en
+ui_lang = {ui_lang}
 
 [weather]
 ; 1 = показывать виджет погоды на рабочем столе (данные: open-meteo.com, без ключа)
@@ -462,6 +470,7 @@ video_rotate = {video_rotate}
             backdrop = self.backdrop,
             backdrop_opacity = self.backdrop_opacity,
             ui_theme = self.ui_theme,
+            ui_lang = Self::clean(&self.ui_lang),
             weather = b(self.weather),
             weather_city = Self::clean(&self.weather_city),
             weather_lat = self.weather_lat,

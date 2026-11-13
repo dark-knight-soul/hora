@@ -7,6 +7,7 @@
 // Создаёт ярлык в меню «Пуск» и запись в «Параметры → Приложения», откуда программу можно удалить
 // (Hora.exe --uninstall). Настройки установленной версии лежат в %LOCALAPPDATA%\Hora у каждого пользователя.
 
+use crate::i18n::tr;
 use crate::util::{log, wide};
 use std::path::{Path, PathBuf};
 use windows_sys::Win32::Foundation::*;
@@ -154,12 +155,12 @@ fn shortcut_path(all: bool) -> Option<PathBuf> {
 pub fn run() {
     let me_dir = install_dir(false).map(|p| p.display().to_string()).unwrap_or_default();
     let all_dir = install_dir(true).map(|p| p.display().to_string()).unwrap_or_default();
-    let me = format!("Только для меня\nБез прав администратора. Папка: {me_dir}");
-    let all = format!("Для всех пользователей этого компьютера\nНужны права администратора. Папка: {all_dir}");
+    let me = if crate::i18n::en() { format!("Just for me\nNo administrator rights needed. Folder: {me_dir}") } else { format!("Только для меня\nБез прав администратора. Папка: {me_dir}") };
+    let all = if crate::i18n::en() { format!("For all users of this computer\nAdministrator rights required. Folder: {all_dir}") } else { format!("Для всех пользователей этого компьютера\nНужны права администратора. Папка: {all_dir}") };
     loop {
         let (choice, _) = dialog(&Dialog {
-            main: "Для кого установить Hora?",
-            content: "Hora меняет обои, показывает часы и погоду на рабочем столе. Настройки у каждого пользователя свои.",
+            main: tr("Для кого установить Hora?"),
+            content: tr("Hora меняет обои, показывает часы и погоду на рабочем столе. Настройки у каждого пользователя свои."),
             links: &[(ID_ME, &me), (ID_ALL, &all)],
             common: windows_sys::Win32::UI::Controls::TDCBF_CANCEL_BUTTON,
             check: None,
@@ -195,7 +196,7 @@ fn install(all: bool) -> bool {
         Ok(()) => true,
         Err(e) => {
             log(&format!("установка не удалась: {e}"));
-            message("Не удалось установить Hora", &e);
+            message(tr("Не удалось установить Hora"), &e);
             false
         }
     }
@@ -203,8 +204,8 @@ fn install(all: bool) -> bool {
 
 fn try_install(all: bool) -> Result<(), String> {
     let src = std::env::current_exe().map_err(|e| e.to_string())?;
-    let dir = install_dir(all).ok_or("не нашлась папка для программ")?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("не удалось создать папку {}: {e}", dir.display()))?;
+    let dir = install_dir(all).ok_or(tr("не нашлась папка для программ"))?;
+    std::fs::create_dir_all(&dir).map_err(|e| if crate::i18n::en() { format!("could not create the folder {}: {e}", dir.display()) } else { format!("не удалось создать папку {}: {e}", dir.display()) })?;
     let exe = dir.join("Hora.exe");
     close_running();
     // файл может быть ещё занят только что закрытой программой — несколько попыток
@@ -222,7 +223,7 @@ fn try_install(all: bool) -> Result<(), String> {
         }
     }
     if !last.is_empty() {
-        return Err(format!("не удалось скопировать программу: {last}"));
+        return Err(if crate::i18n::en() { format!("could not copy the program: {last}") } else { format!("не удалось скопировать программу: {last}") });
     }
     // копия наследует метку «скачано из интернета» (поток Zone.Identifier) — у установленной
     // программы она не нужна (иначе предупреждения при автозапуске)
@@ -234,7 +235,7 @@ fn try_install(all: bool) -> Result<(), String> {
             log(&format!("ярлык не создан: {e}"));
         }
     }
-    register_uninstall(all, &exe, &dir).map_err(|e| format!("не удалось записать программу в список установленных: {e}"))?;
+    register_uninstall(all, &exe, &dir).map_err(|e| if crate::i18n::en() { format!("could not add the program to the installed apps list: {e}") } else { format!("не удалось записать программу в список установленных: {e}") })?;
     log(&format!("Hora установлена в {}", dir.display()));
     Ok(())
 }
@@ -243,11 +244,11 @@ fn try_install(all: bool) -> Result<(), String> {
 fn finish(all: bool) {
     let Some(dir) = install_dir(all) else { return };
     let (_, start) = dialog(&Dialog {
-        main: "Hora установлена",
-        content: "Ярлык — в меню «Пуск». Удалить программу можно в «Параметры → Приложения».",
+        main: tr("Hora установлена"),
+        content: tr("Ярлык — в меню «Пуск». Удалить программу можно в «Параметры → Приложения»."),
         links: &[],
         common: windows_sys::Win32::UI::Controls::TDCBF_OK_BUTTON,
-        check: Some(("Запустить Hora", true)),
+        check: Some((tr("Запустить Hora"), true)),
         shield: false,
     });
     if start {
@@ -314,7 +315,7 @@ fn make_shortcut(lnk: &Path, exe: &Path, dir: &Path) -> windows::core::Result<()
         let link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
         link.SetPath(&HSTRING::from(exe.as_os_str()))?;
         link.SetWorkingDirectory(&HSTRING::from(dir.as_os_str()))?;
-        link.SetDescription(&HSTRING::from("Обои, часы и погода на рабочем столе"))?;
+        link.SetDescription(&HSTRING::from(tr("Обои, часы и погода на рабочем столе")))?;
         link.SetIconLocation(&HSTRING::from(exe.as_os_str()), 0)?;
         let file: IPersistFile = link.cast()?;
         file.Save(&HSTRING::from(lnk.as_os_str()), true)?;
@@ -335,7 +336,7 @@ fn register_uninstall(all: bool, exe: &Path, dir: &Path) -> Result<(), String> {
         let mut key: HKEY = std::ptr::null_mut();
         let r = RegCreateKeyExW(root(all), wide(UNINSTALL_KEY).as_ptr(), 0, std::ptr::null(), 0, KEY_WRITE, std::ptr::null(), &mut key, std::ptr::null_mut());
         if r != 0 {
-            return Err(format!("код {r}"));
+            return Err(if crate::i18n::en() { format!("code {r}") } else { format!("код {r}") });
         }
         let set_str = |name: &str, val: &str| {
             let v = wide(val);
@@ -370,15 +371,15 @@ pub fn uninstall() {
     let all = install_dir(true).map(|d| same_path(&d, &dir)).unwrap_or(false);
     let mine = install_dir(false).map(|d| same_path(&d, &dir)).unwrap_or(false);
     if !all && !mine {
-        message("Это переносная версия Hora", "Её не нужно удалять через «Приложения» — просто удалите папку с программой.");
+        message(tr("Это переносная версия Hora"), tr("Её не нужно удалять через «Приложения» — просто удалите папку с программой."));
         return;
     }
     let (b, wipe) = dialog(&Dialog {
-        main: "Удалить Hora?",
-        content: "Будут удалены программа, ярлык в меню «Пуск» и автозапуск.",
+        main: tr("Удалить Hora?"),
+        content: tr("Будут удалены программа, ярлык в меню «Пуск» и автозапуск."),
         links: &[],
         common: windows_sys::Win32::UI::Controls::TDCBF_YES_BUTTON | windows_sys::Win32::UI::Controls::TDCBF_NO_BUTTON,
-        check: Some(("Удалить также мои настройки, избранное и скачанные обои", false)),
+        check: Some((tr("Удалить также мои настройки, избранное и скачанные обои"), false)),
         shield: false,
     });
     if b != IDYES {
@@ -403,13 +404,13 @@ pub fn uninstall() {
     if all && unsafe { IsUserAnAdmin() } == 0 {
         // ярлык для всех, запись в HKLM и папка в Program Files — только с правами администратора
         if run_elevated("--uninstall-system") != Some(0) {
-            message("Hora не удалена", "Без прав администратора программу «для всех пользователей» удалить нельзя.");
+            message(tr("Hora не удалена"), tr("Без прав администратора программу «для всех пользователей» удалить нельзя."));
             return;
         }
     } else {
         remove_system_parts(all, &dir);
     }
-    message("Hora удалена", "Спасибо, что пользовались!");
+    message(tr("Hora удалена"), tr("Спасибо, что пользовались!"));
     if !all {
         delete_dir_later(&dir); // уже после последнего окна: сразу выходим, папка освобождается
     }

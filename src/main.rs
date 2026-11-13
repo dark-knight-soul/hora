@@ -6,6 +6,7 @@ mod bg;
 mod clock;
 mod config;
 mod http;
+mod i18n;
 mod live;
 mod setup;
 mod ui;
@@ -13,6 +14,7 @@ mod util;
 mod wallpaper;
 mod weather;
 
+use i18n::tr;
 use config::Config;
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -150,6 +152,8 @@ const M_OPEN_LOG: usize = 700;
 const M_OPEN_DIR: usize = 701;
 const M_SETTINGS: usize = 702;
 const M_UI_THEME: usize = 720; // +индекс
+const M_UI_LANG: usize = 960; // +индекс в UI_LANGS
+const UI_LANGS: [(&str, &str); 3] = [("auto", "Как в Windows"), ("ru", "Русский"), ("en", "English")];
 const M_WEATHER_ON: usize = 740;
 const M_WEATHER_REFRESH: usize = 741;
 const M_WPOS: usize = 750; // +индекс в POSITIONS
@@ -492,7 +496,7 @@ impl App {
     fn next_video(&mut self) {
         self.refresh_videos(true);
         if self.videos.is_empty() {
-            self.status = "нет видео: положите mp4 в папку videos или подпишитесь на видеообои в Wallpaper Engine".into();
+            self.status = tr("нет видео: положите mp4 в папку videos или подпишитесь на видеообои в Wallpaper Engine").into();
             log(&self.status);
             // следующий круг всё равно назначаем — вдруг видео появятся
             self.last_change = util::now_unix();
@@ -506,7 +510,7 @@ impl App {
         let v = self.videos[i].clone();
         self.cfg.video = v.path.to_string_lossy().into_owned();
         self.save_cfg();
-        self.status = format!("видео: {}", v.title);
+        self.status = if crate::i18n::en() { format!("video: {}", v.title) } else { format!("видео: {}", v.title) };
         self.last_change = util::now_unix();
         self.save_state();
         self.schedule_wallpaper();
@@ -641,7 +645,7 @@ impl App {
             return;
         }
         self.busy = true;
-        self.set_tip("Hora — подбираю обои…");
+        self.set_tip(tr("Hora — подбираю обои…"));
         let mut cfg = self.cfg.clone();
         // расписание тем: вместо основных категорий — категории этого времени суток
         cfg.topics = self.cfg.topics_at(local_hour()).to_string();
@@ -674,7 +678,7 @@ impl App {
                 self.last_change = util::now_unix();
                 let name = out.paths.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect::<Vec<_>>().join(", ");
                 self.status = name.clone();
-                self.set_tip(&format!("Hora\nОбои: {name}"));
+                self.set_tip(&(if crate::i18n::en() { format!("Hora\nWallpaper: {name}") } else { format!("Hora\nОбои: {name}") }));
                 if let Some(e) = &out.error {
                     log(&format!("обои поставлены из запасного источника: {e}"));
                 }
@@ -682,10 +686,10 @@ impl App {
                 self.schedule_wallpaper();
             }
             None => {
-                let e = out.error.unwrap_or_else(|| "неизвестная ошибка".into());
+                let e = out.error.unwrap_or_else(|| tr("неизвестная ошибка").into());
                 log(&format!("не удалось сменить обои: {e}"));
-                self.status = format!("ошибка: {e}");
-                self.set_tip(&format!("Hora\nНе удалось сменить обои: {e}"));
+                self.status = if crate::i18n::en() { format!("error: {e}") } else { format!("ошибка: {e}") };
+                self.set_tip(&(if crate::i18n::en() { format!("Hora\nCould not change the wallpaper: {e}") } else { format!("Hora\nНе удалось сменить обои: {e}") }));
                 // повторим через 5 минут (или раньше, если интервал короче)
                 if !self.cfg.paused && self.cfg.interval_min > 0 {
                     let retry = (self.cfg.interval_min.min(5) * 60 * 1000).max(60_000);
@@ -760,6 +764,9 @@ impl App {
     // ---- применение изменённых настроек ----
     fn apply_cfg(&mut self, old: &Config) {
         let c = self.cfg.clone();
+        if c.ui_lang != old.ui_lang {
+            i18n::set_lang(&c.ui_lang); // окно и меню сразу на новом языке (окно перерисуется ниже)
+        }
         if c.interval_min != old.interval_min || c.paused != old.paused {
             self.schedule_wallpaper();
         }
@@ -943,180 +950,185 @@ fn build_menu(a: &App, bitmaps: &mut Vec<windows_sys::Win32::Graphics::Gdi::HBIT
     let c = &a.cfg;
     unsafe {
         let m = CreatePopupMenu();
-        add(m, M_SETTINGS, "Открыть WallClock", false);
+        add(m, M_SETTINGS, tr("Открыть Hora"), false);
         SetMenuDefaultItem(m, M_SETTINGS as u32, 0);
         sep(m);
-        add(m, M_NEXT, "Следующие обои", false);
+        add(m, M_NEXT, tr("Следующие обои"), false);
         let fav = a.current_is_fav();
-        add(m, M_FAV, if fav { "В избранном (нажмите, чтобы убрать)" } else { "В избранное" }, fav);
-        add(m, M_BAN, "Больше не показывать эти обои", false);
+        add(m, M_FAV, if fav { tr("В избранном (нажмите, чтобы убрать)") } else { tr("В избранное") }, fav);
+        add(m, M_BAN, tr("Больше не показывать эти обои"), false);
         if !a.last_banned.is_empty() {
-            add(m, M_BAN_UNDO, "Вернуть последние скрытые", false);
+            add(m, M_BAN_UNDO, tr("Вернуть последние скрытые"), false);
         }
-        add(m, M_PAUSE, "Пауза автосмены", c.paused);
+        add(m, M_PAUSE, tr("Пауза автосмены"), c.paused);
 
         let mi = CreatePopupMenu();
         for (i, (v, t)) in INTERVALS.iter().enumerate() {
-            add(mi, M_INTERVAL + i, t, c.interval_min == *v);
+            add(mi, M_INTERVAL + i, tr(t), c.interval_min == *v);
         }
-        sub(m, mi, "Менять каждые");
+        sub(m, mi, tr("Менять каждые"));
 
         let ms = CreatePopupMenu();
         for (i, (v, t)) in SOURCES.iter().enumerate() {
-            add(ms, M_SOURCE + i, t, c.source == *v);
+            add(ms, M_SOURCE + i, tr(t), c.source == *v);
         }
-        sub(m, ms, "Откуда брать обои");
+        sub(m, ms, tr("Откуда брать обои"));
         let mfx = CreatePopupMenu();
         for (i, (v, t)) in FAV_MIXES.iter().enumerate() {
-            add(mfx, M_FAV_MIX + i, t, c.favorites_mix == *v);
+            add(mfx, M_FAV_MIX + i, tr(t), c.favorites_mix == *v);
         }
         sep(mfx);
-        add(mfx, M_FAV_DIR, "Открыть папку избранного", false);
-        add(mfx, M_BAN_OPEN, "Открыть список скрытых", false);
-        sub(m, mfx, "Показывать избранное");
+        add(mfx, M_FAV_DIR, tr("Открыть папку избранного"), false);
+        add(mfx, M_BAN_OPEN, tr("Открыть список скрытых"), false);
+        sub(m, mfx, tr("Показывать избранное"));
         let ml = CreatePopupMenu();
         for (i, (v, t)) in LIVE_MODES.iter().enumerate() {
-            add(ml, M_LIVE + i, t, c.live == *v);
+            add(ml, M_LIVE + i, tr(t), c.live == *v);
         }
         sep(ml);
         for (i, (v, t)) in LIVE_EFFECTS.iter().enumerate() {
-            add(ml, M_LIVE_FX + i, t, c.live == "effects" && c.live_effect == *v);
+            add(ml, M_LIVE_FX + i, tr(t), c.live == "effects" && c.live_effect == *v);
         }
         sep(ml);
-        add(ml, M_VNEXT, "Следующее видео", false);
-        add(ml, M_VDIR, "Открыть папку с видео", false);
-        sub(m, ml, "Живые обои");
+        add(ml, M_VNEXT, tr("Следующее видео"), false);
+        add(ml, M_VDIR, tr("Открыть папку с видео"), false);
+        sub(m, ml, tr("Живые обои"));
 
         // категории: можно отметить несколько — каждый раз берётся случайная из отмеченных
         let mt = CreatePopupMenu();
         let chosen: Vec<&str> = c.topics.split(',').filter(|s| !s.is_empty()).collect();
-        add(mt, M_TOPIC_ANY, "Любые (популярное)", chosen.is_empty() && c.query.trim().is_empty());
+        add(mt, M_TOPIC_ANY, tr("Любые (популярное)"), chosen.is_empty() && c.query.trim().is_empty());
         if chosen.is_empty() && !c.query.trim().is_empty() {
-            let s: String = format!("Свой запрос: {}", c.query.trim()).chars().take(50).collect();
+            let s: String = (if crate::i18n::en() { format!("Custom query: {}", c.query.trim()) } else { format!("Свой запрос: {}", c.query.trim()) }).chars().take(50).collect();
             add(mt, 0, &s, true);
             windows_sys::Win32::UI::WindowsAndMessaging::EnableMenuItem(mt, 0, MF_BYCOMMAND | MF_GRAYED);
         }
         sep(mt);
         for (i, t) in wallpaper::TOPICS.iter().enumerate() {
-            add(mt, M_TOPIC + i, t.1, chosen.contains(&t.0));
+            add(mt, M_TOPIC + i, tr(t.1), chosen.contains(&t.0));
         }
         sep(mt);
-        add(mt, M_SCHED_ON, "По времени суток (расписание)", c.schedule);
+        add(mt, M_SCHED_ON, tr("По времени суток (расписание)"), c.schedule);
         let title = match chosen.len() {
-            0 => "Категории обоев".to_string(),
-            1 => format!("Категории обоев: {}", wallpaper::selected_topics(&c.topics).first().map(|t| t.1).unwrap_or("")),
-            n => format!("Категории обоев: выбрано {n}"),
+            0 => tr("Категории обоев").to_string(),
+            1 => if crate::i18n::en() { format!("Wallpaper categories: {}", wallpaper::selected_topics(&c.topics).first().map(|t| tr(t.1)).unwrap_or("")) } else { format!("Категории обоев: {}", wallpaper::selected_topics(&c.topics).first().map(|t| tr(t.1)).unwrap_or("")) },
+            n => if crate::i18n::en() { format!("Wallpaper categories: {n} selected") } else { format!("Категории обоев: выбрано {n}") },
         };
         sub(m, mt, &title);
         let mon_count = clock::monitors().len();
         if mon_count > 1 {
             let mw = CreatePopupMenu();
             for (i, (v, t)) in WALL_MODES.iter().enumerate() {
-                add(mw, M_WALL_MODE + i, t, c.wall_mode == *v);
+                add(mw, M_WALL_MODE + i, tr(t), c.wall_mode == *v);
             }
-            sub(m, mw, "Обои на мониторах");
+            sub(m, mw, tr("Обои на мониторах"));
         }
         let ma = CreatePopupMenu();
         for (i, (v, t)) in ANIMS.iter().enumerate() {
-            add(ma, M_ANIM + i, t, c.anim == *v);
+            add(ma, M_ANIM + i, tr(t), c.anim == *v);
         }
         sep(ma);
         for (i, (v, t)) in ANIM_SPEEDS.iter().enumerate() {
-            add(ma, M_ANIM_SPEED + i, t, c.anim_ms == *v);
+            add(ma, M_ANIM_SPEED + i, tr(t), c.anim_ms == *v);
         }
-        sub(m, ma, "Анимация смены");
-        add(m, M_SAVE, "Сохранить текущие в мою папку", false);
+        sub(m, ma, tr("Анимация смены"));
+        add(m, M_SAVE, tr("Сохранить текущие в мою папку"), false);
         sep(m);
 
         let mc = CreatePopupMenu();
-        add(mc, M_CLOCK_ON, "Показывать часы", c.clock);
+        add(mc, M_CLOCK_ON, tr("Показывать часы"), c.clock);
         if mon_count > 1 {
             let mm = CreatePopupMenu();
             for (i, (v, t)) in CLOCK_MONS.iter().enumerate() {
-                add(mm, M_CLOCK_MON + i, t, c.clock_monitor == *v);
+                add(mm, M_CLOCK_MON + i, tr(t), c.clock_monitor == *v);
             }
-            sub(mc, mm, "На каком мониторе");
+            sub(mc, mm, tr("На каком мониторе"));
         }
         sep(mc);
         for (i, (v, t)) in STYLES.iter().enumerate() {
-            add(mc, M_STYLE + i, t, c.style == *v);
+            add(mc, M_STYLE + i, tr(t), c.style == *v);
         }
         sep(mc);
-        add(mc, M_SECONDS, "Секунды", c.seconds);
-        add(mc, M_H24, "24-часовой формат", c.is_24h());
-        add(mc, M_SHADOW, "Тень под текстом", c.shadow);
+        add(mc, M_SECONDS, tr("Секунды"), c.seconds);
+        add(mc, M_H24, tr("24-часовой формат"), c.is_24h());
+        add(mc, M_SHADOW, tr("Тень под текстом"), c.shadow);
         let mb = CreatePopupMenu();
         for (i, (v, t)) in BACKDROPS.iter().enumerate() {
-            add(mb, M_BACKDROP + i, t, c.backdrop == *v);
+            add(mb, M_BACKDROP + i, tr(t), c.backdrop == *v);
         }
-        sub(mc, mb, "Подложка (матовое стекло)");
+        sub(mc, mb, tr("Подложка (матовое стекло)"));
         sep(mc);
         for (i, (v, t)) in LANGS.iter().enumerate() {
-            add(mc, M_LANG + i, t, c.lang == *v);
+            add(mc, M_LANG + i, tr(t), c.lang == *v);
         }
         sep(mc);
         let mp = CreatePopupMenu();
         for (i, (v, t)) in POSITIONS.iter().enumerate() {
-            add(mp, M_POS + i, t, c.position == *v && c.offset_x == 0 && (c.offset_y == 0 || (*v == "center" && c.offset_y == -4)));
+            add(mp, M_POS + i, tr(t), c.position == *v && c.offset_x == 0 && (c.offset_y == 0 || (*v == "center" && c.offset_y == -4)));
         }
-        sub(mc, mp, "Положение");
+        sub(mc, mp, tr("Положение"));
         let mz = CreatePopupMenu();
         for (i, v) in SCALES.iter().enumerate() {
             add(mz, M_SCALE + i, &format!("{v}%"), c.scale == *v);
         }
-        sub(mc, mz, "Размер");
+        sub(mc, mz, tr("Размер"));
         sep(mc);
 
         let mcol = CreatePopupMenu();
         for (i, (v, t)) in COLORS.iter().enumerate() {
-            add(mcol, M_COLOR + i, t, c.color == *v);
+            add(mcol, M_COLOR + i, tr(t), c.color == *v);
             bitmaps.push(swatch(mcol, M_COLOR + i, *v));
             if i == 0 {
                 sep(mcol);
             }
         }
-        sub(mc, mcol, "Цвет");
+        sub(mc, mcol, tr("Цвет"));
         let mo = CreatePopupMenu();
         for (i, v) in OPACITIES.iter().enumerate() {
             add(mo, M_OPACITY + i, &format!("{v}%"), c.opacity == *v);
         }
-        sub(mc, mo, "Непрозрачность");
+        sub(mc, mo, tr("Непрозрачность"));
         let mf = CreatePopupMenu();
         let cur = if c.font.is_empty() { "auto" } else { c.font.as_str() };
         for (i, (v, t)) in FONTS.iter().enumerate() {
             if v.is_empty() {
                 sep(mf);
             } else {
-                add(mf, M_FONT + i, t, cur.eq_ignore_ascii_case(v));
+                add(mf, M_FONT + i, tr(t), cur.eq_ignore_ascii_case(v));
             }
         }
-        sub(mc, mf, "Шрифт времени");
+        sub(mc, mf, tr("Шрифт времени"));
         let mf2 = CreatePopupMenu();
         let cur2 = if c.font2.is_empty() { "auto" } else { c.font2.as_str() };
         for (i, (v, t)) in FONTS2.iter().enumerate() {
-            add(mf2, M_FONT2 + i, t, cur2.eq_ignore_ascii_case(v));
+            add(mf2, M_FONT2 + i, tr(t), cur2.eq_ignore_ascii_case(v));
         }
-        sub(mc, mf2, "Шрифт подписей");
-        sub(m, mc, "Часы");
+        sub(mc, mf2, tr("Шрифт подписей"));
+        sub(m, mc, tr("Часы"));
         let mwx = CreatePopupMenu();
-        add(mwx, M_WEATHER_ON, "Показывать погоду", c.weather);
-        add(mwx, M_WEATHER_REFRESH, "Обновить сейчас", false);
+        add(mwx, M_WEATHER_ON, tr("Показывать погоду"), c.weather);
+        add(mwx, M_WEATHER_REFRESH, tr("Обновить сейчас"), false);
         if c.weather_city.is_empty() {
-            add(mwx, M_SETTINGS, "Выбрать город…", false);
+            add(mwx, M_SETTINGS, tr("Выбрать город…"), false);
         }
-        sub(m, mwx, if c.weather_city.is_empty() { "Погода".to_string() } else { format!("Погода: {}", c.weather_city.split(',').next().unwrap_or("")) }.as_str());
+        sub(m, mwx, if c.weather_city.is_empty() { tr("Погода").to_string() } else { if crate::i18n::en() { format!("Weather: {}", c.weather_city.split(',').next().unwrap_or("")) } else { format!("Погода: {}", c.weather_city.split(',').next().unwrap_or("")) } }.as_str());
         sep(m);
 
-        add(m, M_CONFIG, "Все настройки (config.ini)", false);
-        add(m, M_FOLDER, "Открыть мою папку с обоями", false);
-        add(m, M_AUTOSTART, "Запускать вместе с Windows", autostart_enabled());
+        let mlang = CreatePopupMenu();
+        for (i, (v, t)) in UI_LANGS.iter().enumerate() {
+            add(mlang, M_UI_LANG + i, tr(t), c.ui_lang == *v);
+        }
+        sub(m, mlang, "Язык / Language");
+        add(m, M_CONFIG, tr("Все настройки (config.ini)"), false);
+        add(m, M_FOLDER, tr("Открыть мою папку с обоями"), false);
+        add(m, M_AUTOSTART, tr("Запускать вместе с Windows"), autostart_enabled());
         if !a.status.is_empty() {
             sep(m);
             let s: String = a.status.chars().take(70).collect();
             AppendMenuW(m, MF_STRING | MF_GRAYED, 0, wide(&s).as_ptr());
         }
         sep(m);
-        add(m, M_EXIT, "Выход", false);
+        add(m, M_EXIT, tr("Выход"), false);
         m
     }
 }
@@ -1284,7 +1296,7 @@ fn on_menu(a: &mut App, id: usize) -> After {
             Some(v) => {
                 a.cfg.video = v.path.to_string_lossy().into_owned();
                 a.cfg.live = "video".into();
-                a.status = format!("видео: {}", v.title);
+                a.status = if crate::i18n::en() { format!("video: {}", v.title) } else { format!("видео: {}", v.title) };
             }
             None => return After::Nothing,
         },
@@ -1365,6 +1377,7 @@ fn on_menu(a: &mut App, id: usize) -> After {
         M_EXIT => return After::Quit,
         M_SETTINGS => return After::Settings,
         x if (M_UI_THEME..M_UI_THEME + UI_THEMES.len()).contains(&x) => a.cfg.ui_theme = UI_THEMES[x - M_UI_THEME].0.into(),
+        x if (M_UI_LANG..M_UI_LANG + UI_LANGS.len()).contains(&x) => a.cfg.ui_lang = UI_LANGS[x - M_UI_LANG].0.into(),
         M_WEATHER_ON => a.cfg.weather = !a.cfg.weather,
         x if (M_BACKDROP..M_BACKDROP + BACKDROPS.len()).contains(&x) => a.cfg.backdrop = BACKDROPS[x - M_BACKDROP].0.into(),
         M_WEATHER_REFRESH => {
@@ -1773,6 +1786,7 @@ fn main() {
             return;
         }
 
+        i18n::set_lang(&cfg.ui_lang);
         let mut app = App {
             hwnd,
             cfg,

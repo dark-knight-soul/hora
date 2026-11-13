@@ -1,5 +1,6 @@
 // HTTP-запросы через встроенный в Windows WinHTTP: без сторонних библиотек,
 // с системным прокси и системными сертификатами.
+use crate::i18n::tr;
 use crate::util::wide;
 use std::ffi::c_void;
 use std::io::Write;
@@ -25,7 +26,7 @@ struct Request {
 fn open(url: &str) -> Result<Request, String> {
     // только защищённое соединение: подменить ответ по дороге нельзя
     let Some(rest) = url.strip_prefix("https://") else {
-        return Err(format!("непонятный адрес: {url}"));
+        return Err(if crate::i18n::en() { format!("invalid address: {url}") } else { format!("непонятный адрес: {url}") });
     };
     let secure = true;
     let (hostport, path) = match rest.find('/') {
@@ -38,7 +39,7 @@ fn open(url: &str) -> Result<Request, String> {
     };
     unsafe {
         let sess = H(WinHttpOpen(
-            wide("Hora/0.2 (+Windows)").as_ptr(),
+            wide(concat!("Hora/", env!("CARGO_PKG_VERSION"), " (+Windows)")).as_ptr(),
             WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
             std::ptr::null(),
             std::ptr::null(),
@@ -50,7 +51,7 @@ fn open(url: &str) -> Result<Request, String> {
         WinHttpSetTimeouts(sess.0, 10_000, 10_000, 20_000, 30_000);
         let conn = H(WinHttpConnect(sess.0, wide(host).as_ptr(), port, 0));
         if conn.0.is_null() {
-            return Err(format!("не удалось подключиться к {host}"));
+            return Err(if crate::i18n::en() { format!("could not connect to {host}") } else { format!("не удалось подключиться к {host}") });
         }
         let req = H(WinHttpOpenRequest(
             conn.0,
@@ -69,10 +70,11 @@ fn open(url: &str) -> Result<Request, String> {
         if WinHttpSendRequest(req.0, std::ptr::null(), 0, std::ptr::null(), 0, 0, 0) == 0
             || WinHttpReceiveResponse(req.0, std::ptr::null_mut()) == 0
         {
-            return Err(format!(
-                "нет ответа от {host} (код {})",
+            return Err(if crate::i18n::en() { format!("no response from {host} (code {})",
                 windows_sys::Win32::Foundation::GetLastError()
-            ));
+            ) } else { format!("нет ответа от {host} (код {})",
+                windows_sys::Win32::Foundation::GetLastError()
+            ) });
         }
         let mut status: u32 = 0;
         let mut len: u32 = 4;
@@ -85,7 +87,7 @@ fn open(url: &str) -> Result<Request, String> {
             std::ptr::null_mut(),
         );
         if status != 200 {
-            return Err(format!("{host} ответил HTTP {status}"));
+            return Err(if crate::i18n::en() { format!("{host} replied HTTP {status}") } else { format!("{host} ответил HTTP {status}") });
         }
         Ok(Request { req, _conn: conn, _sess: sess })
     }
@@ -99,19 +101,19 @@ fn read_body(r: &Request, limit: usize, mut sink: impl FnMut(&[u8]) -> Result<()
     let start = std::time::Instant::now();
     loop {
         if start.elapsed() > std::time::Duration::from_secs(180) {
-            return Err("скачивание идёт слишком долго".into());
+            return Err(tr("скачивание идёт слишком долго").into());
         }
         let mut got: u32 = 0;
         let ok = unsafe { WinHttpReadData(r.req.0, buf.as_mut_ptr() as *mut c_void, buf.len() as u32, &mut got) };
         if ok == 0 {
-            return Err("обрыв при скачивании".into());
+            return Err(tr("обрыв при скачивании").into());
         }
         if got == 0 {
             return Ok(total);
         }
         total += got as usize;
         if total > limit {
-            return Err("файл слишком большой".into());
+            return Err(tr("файл слишком большой").into());
         }
         sink(&buf[..got as usize])?;
     }
@@ -145,11 +147,11 @@ pub fn download(url: &str, dst: &Path) -> Result<(), String> {
         Ok(n) if n > 10 * 1024 && image() => std::fs::rename(&tmp, dst).map_err(|e| e.to_string()),
         Ok(n) if n > 10 * 1024 => {
             let _ = std::fs::remove_file(&tmp);
-            Err("скачался не JPEG/PNG — пропускаю".into())
+            Err(tr("скачался не JPEG/PNG — пропускаю").into())
         }
         Ok(_) => {
             let _ = std::fs::remove_file(&tmp);
-            Err("скачался пустой файл".into())
+            Err(tr("скачался пустой файл").into())
         }
         Err(e) => {
             let _ = std::fs::remove_file(&tmp);

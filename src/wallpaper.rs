@@ -1,5 +1,6 @@
 // Смена обоев: выбор картинки (Wallhaven / своя папка / кэш), скачивание и установка.
 // Всё это выполняется в отдельном коротком потоке, чтобы не тормозить часы и меню.
+use crate::i18n::tr;
 use crate::config::Config;
 use crate::util::{is_image, wide_os, Rng};
 use crate::http;
@@ -145,7 +146,7 @@ pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32
                 if ok {
                     got.push(p);
                 } else {
-                    errors.push("Windows не принял картинку как обои".into());
+                    errors.push(tr("Windows не принял картинку как обои").into());
                 }
             }
             Err(e) => errors.push(e),
@@ -184,10 +185,10 @@ fn pick_one(cfg: &Config, dirs: &Dirs, exclude: &[PathBuf], screen: (i32, i32), 
     for src in order {
         let got = match src {
             Src::Wallhaven => from_wallhaven(cfg, dirs, screen, wide, rng),
-            Src::Folder => pick_local(&dirs.folder, exclude, &dirs.banned, true, rng).ok_or_else(|| "в своей папке нет картинок".to_string()),
-            Src::Cache => pick_local(&dirs.cache, exclude, &dirs.banned, true, rng).ok_or_else(|| "кэш пуст".to_string()),
+            Src::Folder => pick_local(&dirs.folder, exclude, &dirs.banned, true, rng).ok_or_else(|| tr("в своей папке нет картинок").to_string()),
+            Src::Cache => pick_local(&dirs.cache, exclude, &dirs.banned, true, rng).ok_or_else(|| tr("кэш пуст").to_string()),
             // из избранного повтор текущей допустим, только когда кроме избранного ничего не нужно
-            Src::Favorites => pick_local(&dirs.favorites, exclude, &dirs.banned, only_fav, rng).ok_or_else(|| "в избранном нет других картинок".to_string()),
+            Src::Favorites => pick_local(&dirs.favorites, exclude, &dirs.banned, only_fav, rng).ok_or_else(|| tr("в избранном нет других картинок").to_string()),
         };
         match got {
             Ok(p) => {
@@ -348,9 +349,9 @@ pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool,
         }
     }
     if all_seen {
-        Err("на Wallhaven не нашлось новых картинок (все уже были)".into())
+        Err(tr("на Wallhaven не нашлось новых картинок (все уже были)").into())
     } else {
-        Err("Wallhaven ничего не нашёл по этим настройкам".into())
+        Err(tr("Wallhaven ничего не нашёл по этим настройкам").into())
     }
 }
 

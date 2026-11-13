@@ -13,7 +13,7 @@
 ![Rust](https://img.shields.io/badge/Rust-no%20runtime%20dependencies-1F2433?style=flat-square)
 [![License MIT](https://img.shields.io/badge/license-MIT-1F2433?style=flat-square)](LICENSE)
 
-<img src="docs/clock-photo.png" width="640" alt="Hora clock on the desktop">
+<img src="docs/clock-photo-en.png" width="640" alt="Hora clock on the desktop">
 
 </div>
 
@@ -27,10 +27,10 @@
 - 🌅 **Topic schedule**: nature in the morning, sunsets in the evening, space at night.
 - 🎞 **Wallpaper transitions**: fade, wipe, circle, blinds — the effects are done by Windows itself.
 
-> **Language:** the settings window is in Russian. The clock and the weather widget can be shown in Russian or English (Settings → Clock, or `lang = en` in `config.ini`).
+> **Language:** the settings window, tray menu and installer are in English and Russian — Hora follows your Windows language automatically (switch it in Settings → Other → Language). The clock and the weather widget have their own language setting (Settings → Clock).
 
 <div align="center">
-<img src="docs/screen-categories.png" width="760" alt="Hora settings window">
+<img src="docs/screen-categories-en.png" width="760" alt="Hora settings window">
 </div>
 
 ## Truly lightweight
@@ -74,6 +74,7 @@ Where settings are stored: `%LOCALAPPDATA%\Hora` for the installed version, next
 | `folder` | `D:\Wallpapers` | your own folder with pictures |
 | `anim` / `anim_ms` | `fade` / `900` | transition effect and its duration |
 | `style` / `font` / `color` | `photo` / `Unbounded` / `auto` | clock style, font and color |
+| `ui_lang` | `auto` / `en` / `ru` | language of the settings window and the tray menu (`auto` — same as Windows) |
 | `lang` | `en` / `ru` | language of the clock and the weather widget |
 | `clock_monitor` | `primary` / `second` / `all` | which monitor shows the clock |
 | `weather_city` | `Berlin, Germany` | city for the weather (easier to pick with the search in the settings) |
