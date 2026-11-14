@@ -238,7 +238,17 @@ pub fn coordinator(target: PathBuf, pid: u32) -> i32 {
     let all_users = crate::setup::install_dir(true).map(|d| crate::setup::same_path(&d, target.parent().unwrap_or(Path::new("")))).unwrap_or(false);
     let ok = if all_users {
         // Program Files — только с правами администратора
-        crate::setup::run_elevated("--update-apply-admin") == Some(0)
+        match crate::setup::run_elevated("--update-apply-admin") {
+            Some(0) => true,
+            Some(code) => {
+                crate::util::log(&format!("обновление для всех: замена в Program Files не удалась (код {code})"));
+                false
+            }
+            None => {
+                crate::util::log("обновление для всех: права администратора не подтвердили — оставлена прежняя версия");
+                false
+            }
+        }
     } else {
         match replace(&target) {
             Ok(()) => {
