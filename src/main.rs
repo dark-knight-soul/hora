@@ -5,6 +5,7 @@
 mod bg;
 mod clock;
 mod config;
+mod crash;
 mod http;
 mod i18n;
 mod live;
@@ -155,6 +156,7 @@ const WALL_MODES: [(&str, &str); 3] = [("same", "Одинаковые"), ("per_m
 const M_OPEN_LOG: usize = 700;
 const M_OPEN_DIR: usize = 701;
 const M_SETTINGS: usize = 702;
+const M_REPORT: usize = 703; // сообщить о проблеме на GitHub
 const M_UI_THEME: usize = 720; // +индекс
 const M_UI_LANG: usize = 960; // +индекс в UI_LANGS
 const M_UPDATE_NOW: usize = 970; // обновить до найденной версии
@@ -825,6 +827,7 @@ impl App {
                 if !manual && self.upd_notified != rel.version {
                     self.upd_notified = rel.version.clone();
                     let text = if i18n::en() { format!("Version {}. Click to open the settings and update.", rel.version) } else { format!("Версия {}. Нажмите, чтобы открыть настройки и обновить.", rel.version) };
+                    CRASH_BALLOON.store(false, std::sync::atomic::Ordering::Relaxed);
                     self.balloon(tr("Доступна новая версия Hora"), &text);
                 }
                 UpdState::Available(rel)
@@ -1551,6 +1554,7 @@ fn on_menu(a: &mut App, id: usize) -> After {
         x if (M_WMON..M_WMON + CLOCK_MONS.len()).contains(&x) => a.cfg.weather_monitor = CLOCK_MONS[x - M_WMON].0.into(),
         x if (M_WSCALE..M_WSCALE + SCALES.len()).contains(&x) => a.cfg.weather_scale = SCALES[x - M_WSCALE],
         M_OPEN_LOG => return After::Open(util::app_dir().join("wallclock.log")),
+        M_REPORT => return After::Open(PathBuf::from(crash::issue_url())),
         M_OPEN_DIR => return After::Open(util::app_dir()),
         _ => return After::Nothing,
     }
@@ -1600,7 +1604,14 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 WM_RBUTTONUP | WM_CONTEXTMENU => show_menu(hwnd),
                 // щелчок по значку — окно настроек
                 WM_LBUTTONUP => ui::open(),
-                0x405 => ui::open_page(7), // NIN_BALLOONUSERCLICK — щёлкнули по уведомлению об обновлении
+                // NIN_BALLOONUSERCLICK — щёлкнули по уведомлению: об ошибке или об обновлении
+                0x405 => {
+                    if CRASH_BALLOON.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                        ShellExecuteW(hwnd, wide("open").as_ptr(), wide(&crash::issue_url()).as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL);
+                    } else {
+                        ui::open_page(7)
+                    }
+                }
                 _ => {}
             }
             0
@@ -1840,6 +1851,9 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
     }
 }
 
+/// Последнее уведомление в трее — о падении (щелчок откроет отчёт, а не настройки).
+static CRASH_BALLOON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     // установка и удаление (HoraSetup.exe, «Параметры → Приложения»)
@@ -1890,6 +1904,8 @@ fn main() {
             util::set_log(false);
             std::process::exit(setup::install_elevated())
         }
+        // перезапуск после падения: сначала дождаться, пока упавшая копия завершится
+        Some("--after-crash") => crash::wait_for(args.get(2).and_then(|v| v.parse().ok()).unwrap_or(0)),
         _ if setup::is_setup_exe() => return setup::run(),
         _ => {}
     }
@@ -1899,6 +1915,7 @@ fn main() {
     // Режим проверки дизайна: WallClock.exe --render-test out.bmp [стиль] [язык] [ширина] [высота] [шрифт] [цвет]
     // процесс живых обоев: рисует эффекты и видео, настройки получает от главной программы
     if args.get(1).map(|s| s == "--live").unwrap_or(false) {
+        crash::install(false);
         live::child_main(args.get(2).and_then(|v| v.parse().ok()).unwrap_or(0));
         return;
     }
@@ -1971,10 +1988,26 @@ fn main() {
         std::process::exit(if r.is_ok() { 0 } else { 1 });
     }
 
+    crash::install(true);
+    // проверка перехвата падений: Hora.exe --crash-test panic|av
+    match args.get(1).map(|s| s.as_str()).zip(args.get(2).map(|s| s.as_str())) {
+        Some(("--crash-test", "panic")) => panic!("проверка перехвата падений"),
+        Some(("--crash-test", "av")) => unsafe { std::ptr::write_volatile(8 as *mut u32, 1) },
+        _ => {}
+    }
+    if args.get(1).map(|s| s == "--crash-url").unwrap_or(false) {
+        let _ = std::fs::write(dir.join("crash-url.txt"), crash::issue_url());
+        return;
+    }
+
     unsafe {
         // только одна копия программы
         CreateMutexW(std::ptr::null(), 0, wide("Local\\WallClock_SingleInstance").as_ptr());
         if GetLastError() == ERROR_ALREADY_EXISTS {
+            // после падения вторая копия молча уходит (окно настроек не открываем)
+            if args.get(1).map(|s| s == "--after-crash").unwrap_or(false) {
+                return;
+            }
             let other = FindWindowW(wide("WallClockMain").as_ptr(), std::ptr::null());
             if !other.is_null() {
                 AllowSetForegroundWindow(u32::MAX); // ASFW_ANY — пусть первая копия выведет окно вперёд
@@ -2053,6 +2086,11 @@ fn main() {
         app.load_state();
         app.refresh_lists();
         app.tray(NIM_ADD, "Hora");
+        if crash::take_new() {
+            log("в прошлый раз программа упала — предлагаем сообщить об ошибке");
+            CRASH_BALLOON.store(true, std::sync::atomic::Ordering::Relaxed);
+            app.balloon(tr("Hora закрылась из-за ошибки"), tr("Программа перезапущена. Нажмите, чтобы сообщить об ошибке на GitHub — это поможет её исправить."));
+        }
         migrate_autostart();
         update::cleanup(); // остатки прошлого обновления
         if app.cfg.update_check {

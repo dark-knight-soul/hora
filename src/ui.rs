@@ -2385,7 +2385,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     let b1 = c.btn(x, y, tr("Все настройки"), M_CONFIG, 0, Some(Ic::File));
                     let b2 = c.btn(x + b1 + p(8.0), y, tr("Журнал"), M_OPEN_LOG, 0, Some(Ic::List));
                     c.btn(x + b1 + b2 + p(16.0), y, tr("Папка программы"), M_OPEN_DIR, 0, Some(Ic::Folder));
-                    y + p(38.0)
+                    // форма «Ошибка» на GitHub с уже вписанными версией и Windows (и отчётом о падении, если было)
+                    c.btn(x, y + p(46.0), tr("Сообщить о проблеме"), M_REPORT, 0, Some(Ic::Next));
+                    y + p(84.0)
                 });
                 let mem = memory_mb();
                 y = c.card(x, y, w, |c, x, y, w| {

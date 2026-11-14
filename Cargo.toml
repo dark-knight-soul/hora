@@ -1,6 +1,6 @@
 [package]
 name = "hora"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 build = "build.rs"
 license = "MIT"
@@ -37,6 +37,8 @@ features = [
     "Win32_UI_Controls",
     "Win32_Globalization",
     "Win32_Security_Cryptography",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Kernel",
 ]
 
 # Видеокарта (Direct3D 11, Direct2D, DirectComposition) и видео (Media Foundation) — для живых обоев.

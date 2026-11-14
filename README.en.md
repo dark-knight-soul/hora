@@ -101,6 +101,7 @@ Hora talks only to open services and sends nothing about you:
 - `wallhaven.cc` — searching and downloading wallpapers (HTTPS only, images only from `w.wallhaven.cc`);
 - `open-meteo.com` — weather and city search (the coordinates of the city you picked);
 - `api.github.com` / `github.com` — a once-a-day check for a new version and its download (turn it off in Other or with `update_check = 0`).
+- If Hora crashes, the reason is written to `crash.txt` next to the settings. Nothing is sent automatically: clicking the notification opens a GitHub form with the report text, and you decide whether to submit it.
 
 No telemetry, no accounts, no ads.
 

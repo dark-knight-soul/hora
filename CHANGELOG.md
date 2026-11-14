@@ -2,6 +2,12 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
+## [0.6.0] — 2026-11-14
+### Added · Добавлено
+- Crash handling: the reason goes to `crash.txt`, Hora restarts itself once (not more often than every 2 minutes) and offers to report the error on GitHub with a prefilled form. Nothing is sent automatically. · Перехват падений: причина в `crash.txt`, один автоперезапуск, предложение сообщить об ошибке.
+- Settings → Other → **Report a problem**: opens the bug form with version and Windows filled in. · Кнопка «Сообщить о проблеме».
+- Config compatibility test: `config.ini` files from all previous versions keep working. · Тест совместимости `config.ini`.
+
 ## [0.5.1] — 2026-11-13
 ### Added · Добавлено
 - Silent install and uninstall for winget and admins: `HoraSetup.exe --silent [--all-users]`, `Hora.exe --uninstall --silent`. · Тихая установка и удаление без окон.
@@ -28,6 +34,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Added
 - First public release: wallpapers from Wallhaven or a folder, 12 clock styles, weather, favorites and blacklist, live wallpapers (effects and video, incl. Wallpaper Engine video), installer and portable version. · Первый публичный выпуск.
 
+[0.6.0]: https://github.com/dark-knight-soul/hora/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dark-knight-soul/hora/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dark-knight-soul/hora/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/dark-knight-soul/hora/compare/v0.3.0...v0.4.0

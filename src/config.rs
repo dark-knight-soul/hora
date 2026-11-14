@@ -516,6 +516,55 @@ video_rotate = {video_rotate}
 mod tests {
     use super::*;
 
+    // Обещание совместимости (к версии 1.0): любой config.ini, записанный прошлыми версиями,
+    // читается и дальше — новые ключи получают значения по умолчанию, лишние пропускаются.
+    #[test]
+    fn config_compat() {
+        let dir = std::env::temp_dir().join(format!("hora-config-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join("config.ini");
+
+        // 1) всё, что пишет save(), читается обратно без потерь
+        let mut c = Config::default();
+        c.interval_min = 7;
+        c.topics = "space,sea".into();
+        c.font = "Hora Pixel".into();
+        c.wall_mode = "span".into();
+        c.ui_lang = "en".into();
+        c.update_check = false;
+        c.folder = r"D:\Картинки; отпуск".into();
+        c.save(&p).unwrap();
+        assert!(Config::try_load(&p).unwrap() == c, "save → load меняет настройки");
+
+        // 2) файл самой первой версии (WallClock): старый ключ per_monitor, CRLF, комментарии,
+        //    неизвестный ключ и ни одного из новых ключей
+        let old = "; Настройки WallClock
+[wallpaper]
+source = folder
+interval_min = 30
+per_monitor = 1
+something_removed = 5
+[clock]
+style = photo ; как на фото
+";
+        std::fs::write(&p, old).unwrap();
+        let o = Config::try_load(&p).unwrap();
+        let d = Config::default();
+        assert_eq!((o.source.as_str(), o.interval_min, o.wall_mode.as_str(), o.style.as_str()), ("folder", 30, "per_monitor", "photo"));
+        assert!(o.font == d.font && o.update_check == d.update_check && o.ui_lang == d.ui_lang && o.schedule == d.schedule);
+
+        // 3) сохранён Блокнотом в «Юникоде» (UTF-16 с меткой FF FE)
+        let mut bytes = vec![0xFF, 0xFE];
+        for u in "interval_min = 45
+".encode_utf16() {
+            bytes.extend_from_slice(&u.to_le_bytes());
+        }
+        std::fs::write(&p, bytes).unwrap();
+        assert_eq!(Config::try_load(&p).unwrap().interval_min, 45);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // время суток по часу: границы, ночь через полночь, «0» у ночи, ошибки в файле
     #[test]
     fn slots() {

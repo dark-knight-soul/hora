@@ -42,6 +42,6 @@ body:
   - type: textarea
     id: log
     attributes:
-      label: Log · Журнал (hora.log)
+      label: Log or crash report · Журнал или отчёт о падении (wallclock.log, crash.txt)
       description: Remove personal data (city, paths) before pasting. · Уберите личные данные.
       render: text

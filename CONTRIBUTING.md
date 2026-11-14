@@ -6,7 +6,7 @@ Thanks for your interest in Hora! Issues and pull requests in English or Russian
 ## Reporting a bug · Сообщить об ошибке
 1. Check that you are on the [latest release](https://github.com/dark-knight-soul/hora/releases/latest).
 2. Open an issue with the **Bug report** template: Windows version, number of monitors and scaling, what you did, what you expected and what happened.
-3. Attach `hora.log` (tray menu → Open log) — remove anything personal from it first (city, folder paths).
+3. Easiest: Settings → Other → **Report a problem** opens this form with the version and Windows already filled in (and the crash report, if Hora crashed). Attach `wallclock.log` (Settings → Other → Log) — remove anything personal from it first (city, folder paths).
 
 ## Building · Сборка
 - Windows 10/11 x64, Rust stable (the `x86_64-pc-windows-gnu` toolchain works without Visual Studio).
