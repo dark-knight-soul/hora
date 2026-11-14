@@ -125,6 +125,15 @@ pub fn load_system_dll(name: &str) -> windows_sys::Win32::Foundation::HMODULE {
 }
 
 pub fn log(msg: &str) {
+    // HORA_DEBUG_LOG=<файл> — для проверок: писать и туда, даже там, где журнал обычно молчит
+    // (помощник обновления, процесс с правами администратора)
+    if let Some(p) = std::env::var_os("HORA_DEBUG_LOG") {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            use std::io::Write;
+            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() % 100_000_000).unwrap_or(0);
+            let _ = writeln!(f, "{t:>9} [{}] {msg}", std::process::id());
+        }
+    }
     if !LOG_ON.load(std::sync::atomic::Ordering::Relaxed) {
         return;
     }

@@ -192,7 +192,15 @@ pub fn start(new_exe: &Path) -> Result<(), String> {
 
 /// Убрать скачанное прошлым обновлением (при запуске уже новой версии).
 pub fn cleanup() {
-    let _ = std::fs::remove_dir_all(update_dir());
+    // свежие файлы (моложе 10 минут) не трогаем: обновление, возможно, ещё идёт —
+    // например, ждёт подтверждения прав администратора
+    let dir = update_dir();
+    let busy = std::fs::read_dir(&dir)
+        .map(|it| it.flatten().any(|e| e.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).map(|d| d.as_secs() < 600).unwrap_or(true)))
+        .unwrap_or(false);
+    if !busy {
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 /// Скопировать себя на место target (файл может быть ещё занят закрывающейся программой).
@@ -273,17 +281,18 @@ pub fn coordinator(target: PathBuf, pid: u32) -> i32 {
 
 /// С правами администратора: заменить Hora.exe в папке установки «для всех» — и только её.
 pub fn apply_admin() -> i32 {
-    let Some(dir) = crate::setup::install_dir(true) else { return 1 };
+    // разные коды — чтобы по журналу помощника было видно, что именно не вышло
+    let Some(dir) = crate::setup::install_dir(true) else { return 2 };
     let target = dir.join("Hora.exe");
     if !target.is_file() {
-        return 1;
+        return 3;
     }
     match replace(&target) {
         Ok(()) => {
             let _ = crate::setup::register_uninstall(true, &target, &dir);
             0
         }
-        Err(_) => 1,
+        Err(_) => 4,
     }
 }
 

@@ -4,6 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 ### Fixed · Исправлено
+- "All users" updates: the elevation request always waits for the UAC answer, fresh update files are never cleaned up mid-update, and the log says whether rights were declined or the replacement failed. · Обновление «для всех»: надёжнее ожидание UAC, понятный журнал.
 - Updating after a long time no longer goes step by step (0.4 → 0.5 → 0.6): right before installing, Hora asks GitHub again and installs the newest version. · Обновление больше не идёт по ступенькам: перед установкой Hora перепроверяет последнюю версию.
 
 ## [0.6.0] — 2026-11-14

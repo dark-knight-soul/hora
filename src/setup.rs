@@ -298,23 +298,39 @@ fn finish(all: bool) {
 /// Запустить себя же с правами администратора и дождаться. None — права не подтвердили.
 pub(crate) fn run_elevated(args: &str) -> Option<u32> {
     unsafe {
+        // Как советует документация ShellExecuteEx: COM в потоке и SEE_MASK_NOASYNC — чтобы вызов
+        // гарантированно дождался ответа на запрос UAC (помощник обновления — процесс без окон).
+        let _ = windows_sys::Win32::System::Com::CoInitializeEx(std::ptr::null(), (windows_sys::Win32::System::Com::COINIT_APARTMENTTHREADED | windows_sys::Win32::System::Com::COINIT_DISABLE_OLE1DDE) as u32);
         let exe = std::env::current_exe().ok()?;
         let file = wide(&exe.to_string_lossy());
         let (verb, params) = (wide("runas"), wide(args));
         let mut si: SHELLEXECUTEINFOW = std::mem::zeroed();
         si.cbSize = std::mem::size_of::<SHELLEXECUTEINFOW>() as u32;
-        si.fMask = SEE_MASK_NOCLOSEPROCESS;
+        si.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
         si.lpVerb = verb.as_ptr();
         si.lpFile = file.as_ptr();
         si.lpParameters = params.as_ptr();
         si.nShow = SW_SHOWNORMAL;
-        if ShellExecuteExW(&mut si) == 0 || si.hProcess.is_null() {
+        log(&format!("права администратора: запрашиваю ({args})"));
+        let t0 = std::time::Instant::now();
+        let ok = ShellExecuteExW(&mut si);
+        let err = GetLastError();
+        log(&format!("права администратора: ответ Windows через {} мс — {}, процесс {}", t0.elapsed().as_millis(), if ok != 0 { "успех".to_string() } else { format!("ошибка {err}") }, if si.hProcess.is_null() { "нет" } else { "есть" }));
+        if ok == 0 {
+            if err != ERROR_CANCELLED {
+                log(&format!("запуск с правами администратора не удался: код {err}"));
+            }
+            return None;
+        }
+        if si.hProcess.is_null() {
+            log("запуск с правами администратора: Windows не вернула процесс");
             return None;
         }
         windows_sys::Win32::System::Threading::WaitForSingleObject(si.hProcess, u32::MAX);
         let mut code = 1u32;
         windows_sys::Win32::System::Threading::GetExitCodeProcess(si.hProcess, &mut code);
         CloseHandle(si.hProcess);
+        log(&format!("права администратора: процесс завершился с кодом {code}"));
         Some(code)
     }
 }
