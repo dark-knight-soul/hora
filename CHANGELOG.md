@@ -3,6 +3,8 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.7.0] — 2026-11-14
 ### Added · Добавлено
 - 16 new wallpaper categories (34 in total), including **ASCII art**, pixel art, cyberpunk, synthwave, low poly, flowers, waterfalls, northern lights, planets, Japan and cats. · 16 новых категорий обоев, в том числе ASCII-арт.
 - Global hotkeys: **Win+Alt+N** — next wallpaper, **Win+Alt+H** — add to favorites, **Win+Alt+O** — open settings (change them in `config.ini`: `hotkey_next`, `hotkey_fav`, `hotkey_open`; a combination taken by another program is marked in Settings → Other). · Горячие клавиши.
@@ -61,7 +63,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Added
 - First public release: wallpapers from Wallhaven or a folder, 12 clock styles, weather, favorites and blacklist, live wallpapers (effects and video, incl. Wallpaper Engine video), installer and portable version. · Первый публичный выпуск.
 
-[Unreleased]: https://github.com/dark-knight-soul/hora/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/dark-knight-soul/hora/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/dark-knight-soul/hora/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dark-knight-soul/hora/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dark-knight-soul/hora/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dark-knight-soul/hora/compare/v0.4.0...v0.5.0
