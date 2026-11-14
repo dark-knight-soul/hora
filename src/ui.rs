@@ -2185,7 +2185,7 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     let now = cfg.slot_at(clock_hour());
                     for slot in 0..4 {
                         let chosen: Vec<&str> = cfg.topics_slot[slot].split(',').filter(|s| !s.is_empty()).collect();
-                        let base = M_SCHED + slot * 20;
+                        let base = M_SCHED + slot * SCHED_STRIDE;
                         let mut items = vec![(tr("Как основные").to_string(), base + SCHED_SAME, chosen.is_empty())];
                         items.extend(wallpaper::TOPICS.iter().enumerate().map(|(i, t)| (tr(t.1).to_string(), base + i, chosen.contains(&t.0))));
                         let (from, to) = (hours[slot], if slot == 3 { hours[0] } else { hours[slot + 1] });

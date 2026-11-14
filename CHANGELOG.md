@@ -4,6 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 ### Added · Добавлено
+- 16 new wallpaper categories (34 in total), including **ASCII art**, pixel art, cyberpunk, synthwave, low poly, flowers, waterfalls, northern lights, planets, Japan and cats. · 16 новых категорий обоев, в том числе ASCII-арт.
 - Global hotkeys: **Win+Alt+N** — next wallpaper, **Win+Alt+H** — add to favorites, **Win+Alt+O** — open settings (change them in `config.ini`: `hotkey_next`, `hotkey_fav`, `hotkey_open`; a combination taken by another program is marked in Settings → Other). · Горячие клавиши.
 - Pixel scoreboard: soft **glow** around the dots and an optional **blinking colon** (also for Block pixels). · Свечение точек и мигающее двоеточие.
 - The settings window remembers its size, position and maximized state. · Окно настроек запоминает размер и положение.

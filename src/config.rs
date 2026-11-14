@@ -340,7 +340,9 @@ wall_mode = {wall_mode}
 folder = {folder}
 ; категории (можно несколько через запятую, каждый раз берётся случайная из них):
 ;   nature mountains sea forest space city architecture abstract minimalism dark sunset
-;   winter animals cars fantasy digital games anime      (пусто = свой запрос ниже или просто популярное)
+;   winter animals cars fantasy digital games anime ascii pixel cyberpunk synthwave lowpoly
+;   flowers lake waterfall desert autumn aurora clouds planets japan cats macro
+;   (пусто = свой запрос ниже или просто популярное)
 topics = {topics}
 ; расписание: 1 = на каждое время суток свои категории (утро, день, вечер, ночь)
 schedule = {schedule}

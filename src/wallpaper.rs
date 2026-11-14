@@ -8,7 +8,8 @@ use std::ffi::c_void;
 use std::path::{Path, PathBuf};
 
 /// Категории обоев: (id для config.ini, название в меню, запрос Wallhaven, категории general/anime/people)
-pub const TOPICS: [(&str, &str, &str, &str); 18] = [
+/// Номера пунктов меню: M_TOPIC + индекс (до 40 штук) и M_SCHED + время суток·50 + индекс (до 49).
+pub const TOPICS: [(&str, &str, &str, &str); 34] = [
     ("nature", "Природа", "nature", "100"),
     ("mountains", "Горы", "mountains", "100"),
     ("sea", "Море и пляжи", "sea", "100"),
@@ -27,6 +28,22 @@ pub const TOPICS: [(&str, &str, &str, &str); 18] = [
     ("digital", "Цифровое искусство", "digital art", "100"),
     ("games", "Игры", "video games", "100"),
     ("anime", "Аниме", "", "010"),
+    ("ascii", "ASCII-арт", "ascii", "100"),
+    ("pixel", "Пиксель-арт", "pixel art", "100"),
+    ("cyberpunk", "Киберпанк", "cyberpunk", "100"),
+    ("synthwave", "Ретро и синтвейв", "synthwave", "100"),
+    ("lowpoly", "Low poly", "low poly", "100"),
+    ("flowers", "Цветы", "flowers", "100"),
+    ("lake", "Озёра и реки", "lake", "100"),
+    ("waterfall", "Водопады", "waterfall", "100"),
+    ("desert", "Пустыня", "desert", "100"),
+    ("autumn", "Осень", "autumn", "100"),
+    ("aurora", "Северное сияние", "aurora", "100"),
+    ("clouds", "Небо и облака", "clouds", "100"),
+    ("planets", "Планеты", "planet", "100"),
+    ("japan", "Япония", "Japan", "100"),
+    ("cats", "Кошки", "cats", "100"),
+    ("macro", "Макро", "macro", "100"),
 ];
 
 /// Список выбранных категорий из строки настроек.

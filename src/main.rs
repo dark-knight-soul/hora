@@ -117,8 +117,9 @@ const M_BAN_OPEN: usize = 106; // открыть чёрный список
 const M_BAN_UNDO: usize = 107; // вернуть последние скрытые
 const M_FAV_MIX: usize = 800; // +индекс
 const M_SCHED_ON: usize = 820; // расписание тем вкл/выкл
-const M_SCHED: usize = 830; // + время суток·20 + номер категории (19 — «как основные»)
-const SCHED_SAME: usize = 19;
+const M_SCHED: usize = 1400; // + время суток·50 + номер категории (49 — «как основные»); до 1600
+const SCHED_STRIDE: usize = 50;
+const SCHED_SAME: usize = 49;
 // живые обои
 const M_LIVE: usize = 920; // +индекс в LIVE_MODES
 const LIVE_MODES: [(&str, &str); 3] = [("off", "Выключены"), ("effects", "Эффекты поверх обоев"), ("video", "Видео")];
@@ -1494,8 +1495,8 @@ fn on_menu(a: &mut App, id: usize) -> After {
             }
             None => return After::Nothing,
         },
-        x if (M_SCHED..M_SCHED + 4 * 20).contains(&x) => {
-            let (slot, ti) = ((x - M_SCHED) / 20, (x - M_SCHED) % 20);
+        x if (M_SCHED..M_SCHED + 4 * SCHED_STRIDE).contains(&x) => {
+            let (slot, ti) = ((x - M_SCHED) / SCHED_STRIDE, (x - M_SCHED) % SCHED_STRIDE);
             if ti == SCHED_SAME {
                 a.cfg.topics_slot[slot].clear();
             } else if let Some(t) = wallpaper::TOPICS.get(ti) {
