@@ -269,6 +269,7 @@ const PAIRS: &[(&str, &str)] = &[
     ("Матовое стекло: размытые обои под текстом — читается на любом фоне", "Frosted glass: blurred wallpaper behind the text — readable on any background"),
     ("Прозрачность подложки", "Backdrop transparency"),
     ("Положение на экране", "Position on screen"),
+    ("Сейчас не действует: в пиксельных стилях шрифт задан самим стилем", "Not used now: pixel styles bring their own font"),
     ("Michroma — только латиница; для русского выбирайте любой другой", "Michroma has Latin letters only; pick another font for Cyrillic"),
     ("Дата и день недели", "Date and weekday"),
     ("Данные open-meteo.com, обновление раз в 30 минут", "Data from open-meteo.com, updated every 30 minutes"),

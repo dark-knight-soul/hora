@@ -2274,7 +2274,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                 });
                 let cur = if cfg.font.is_empty() { "auto" } else { cfg.font.as_str() };
                 let items: Vec<_> = FONTS.iter().enumerate().filter(|(_, (v, _))| !v.is_empty()).map(|(i, (v, t))| (tr(t).split(" — ").next().unwrap_or(t).to_string(), M_FONT + i, cur.eq_ignore_ascii_case(v))).collect();
-                y = c.group(x, y, w, tr("Шрифт времени"), tr("Michroma — только латиница; для русского выбирайте любой другой"), &items);
+                let pixel_style = cfg.style == "pixel" || cfg.style == "block";
+                let hint = if pixel_style { tr("Сейчас не действует: в пиксельных стилях шрифт задан самим стилем") } else { tr("Michroma — только латиница; для русского выбирайте любой другой") };
+                y = c.group(x, y, w, tr("Шрифт времени"), hint, &items);
                 let cur2 = if cfg.font2.is_empty() { "auto" } else { cfg.font2.as_str() };
                 let items: Vec<_> = FONTS2.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_FONT2 + i, cur2.eq_ignore_ascii_case(v))).collect();
                 y = c.group(x, y, w, tr("Шрифт подписей"), tr("Дата и день недели"), &items);

@@ -361,22 +361,18 @@ fn build(cfg: &Config, st: &SysTime, k: f32) -> Layout {
             line(&t.date_full, small_face(), px(0.024), 300, 0.3, px(0.04)),
         ]),
         // Пиксельное табло: время и подпись светящимися точками (свой шрифт Hora Pixel)
-        "pixel" => {
-            let small = if cfg.font2.is_empty() || cfg.font2.eq_ignore_ascii_case("auto") { "Hora Pixel".to_string() } else { cfg.font2.clone() };
-            Layout::Stack(vec![
-                line(&time_ampm, big_face("Hora Pixel", "Hora Pixel"), px(0.17), 400, 0.0, 0),
-                line(&format!("{} · {}", t.day_short, t.date_short), small, px(0.04), 400, 0.1, px(0.05)),
-            ])
-        }
+        // шрифт здесь — часть самого стиля: выбор «Шрифт времени/подписей» в «Оформлении» не действует
+        // (иначе при выбранном, скажем, Michroma «пиксельный» стиль рисовался бы вовсе не пикселями)
+        "pixel" => Layout::Stack(vec![
+            line(&time_ampm, "Hora Pixel".into(), px(0.17), 400, 0.0, 0),
+            line(&format!("{} · {}", t.day_short, t.date_short), "Hora Pixel".into(), px(0.04), 400, 0.1, px(0.05)),
+        ]),
         // Блочный пиксель: крупные квадратные пиксели, как в играх-песочницах (свой шрифт Hora Block)
-        "block" => {
-            let small = if cfg.font2.is_empty() || cfg.font2.eq_ignore_ascii_case("auto") { "Hora Block".to_string() } else { cfg.font2.clone() };
-            Layout::Stack(vec![
-                line(&t.day, small.clone(), px(0.036), 400, 0.12, 0),
-                line(&time_ampm, big_face("Hora Block", "Hora Block"), px(0.18), 400, 0.0, px(0.035)),
-                line(&t.date_short, small, px(0.03), 400, 0.12, px(0.045)),
-            ])
-        }
+        "block" => Layout::Stack(vec![
+            line(&t.day, "Hora Block".into(), px(0.036), 400, 0.12, 0),
+            line(&time_ampm, "Hora Block".into(), px(0.18), 400, 0.0, px(0.035)),
+            line(&t.date_short, "Hora Block".into(), px(0.03), 400, 0.12, px(0.045)),
+        ]),
         // Стрелочные часы
         "analog" => Layout::Dial {
             r: px(0.17),
@@ -720,9 +716,18 @@ fn compose_with(cfg: &Config, st: &SysTime, area: (i32, i32), fonts: &mut FontSt
 
             // --- холст с запасом под выносные элементы букв и тень (в обычном размере) ---
             let max_px = all_lines.iter().map(|l| l.font.px).max().unwrap_or(10) / SS;
-            let blur = if cfg.shadow { ((area.1 as f32) * if cfg.halo { 0.0035 } else { 0.0045 }).round().max(2.0) as i32 } else { 0 };
+            // «Блочный пиксель»: тень жёсткая — та же форма, сдвинутая вниз-вправо, без размытия
+            let hard = cfg.style == "block";
+            let blur = if cfg.shadow && !hard { ((area.1 as f32) * if cfg.halo { 0.0035 } else { 0.0045 }).round().max(2.0) as i32 } else { 0 };
             // обычная тень чуть смещена вниз-вправо; ореол — ровно вокруг букв
-            let off = if cfg.shadow && !cfg.halo { (blur / 2).max(1) } else { 0 };
+            let off = if cfg.shadow && hard {
+                // четверть «пикселя» шрифта (пиксель шрифта — десятая часть его размера)
+                ((max_px as f32) * 0.025).round().max(2.0) as i32
+            } else if cfg.shadow && !cfg.halo {
+                (blur / 2).max(1)
+            } else {
+                0
+            };
             let m = max_px * 6 / 10 + blur * 3 + off;
             let cw = (w + SS - 1) / SS + m * 2;
             let ch = (h + SS - 1) / SS + m * 2;
@@ -856,8 +861,10 @@ fn compose_with(cfg: &Config, st: &SysTime, area: (i32, i32), fonts: &mut FontSt
                     let dst = ((y + off) * cw + off) as usize;
                     sh[dst..dst + (cw - off) as usize].copy_from_slice(&alpha[src..src + (cw - off) as usize]);
                 }
-                for _ in 0..3 {
-                    box_blur(&mut sh, cw, ch, blur);
+                if blur > 0 {
+                    for _ in 0..3 {
+                        box_blur(&mut sh, cw, ch, blur);
+                    }
                 }
                 if let Some(sb) = bbox(&sh, cw, ch) {
                     all = RECT {
@@ -869,7 +876,7 @@ fn compose_with(cfg: &Config, st: &SysTime, area: (i32, i32), fonts: &mut FontSt
                 }
                 for i in 0..n {
                     let a = alpha[i] as u32;
-                    let sv = if cfg.halo { (sh[i] as u32 * 3).min(255) } else { sh[i] as u32 * 150 / 255 };
+                    let sv = if cfg.halo && !hard { (sh[i] as u32 * 3).min(255) } else { sh[i] as u32 * 150 / 255 };
                     let s = sv * (255 - a) / 255;
                     alpha[i] = (a + s).min(255) as u8;
                     sh[i] = a as u8; // запоминаем «чистый» текст для цвета
@@ -2239,8 +2246,8 @@ mod tests {
         st.wSecond = 8;
         assert_eq!(texts(&cfg, &st).time, "14:05");
         st.wSecond = 7;
-        cfg.font = "Jura".into(); // чужой шрифт — пустого двоеточия в нём нет
-        assert_eq!(texts(&cfg, &st).time, "14:05");
+        cfg.font = "Jura".into(); // выбор шрифта в «Оформлении» пиксельному стилю не мешает
+        assert_eq!(texts(&cfg, &st).time, "14\u{E000}05");
         cfg.font = "auto".into();
         cfg.style = "minimal".into();
         assert_eq!(texts(&cfg, &st).time, "14:05");

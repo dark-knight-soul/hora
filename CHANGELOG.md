@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Clock styles have short, clear names ("Big time", "Split letters", "Analog"…) — the preview shows what each looks like. · Понятные названия стилей.
 
 ### Fixed · Исправлено
+- Pixel styles ignored their own fonts when a font was picked in Appearance (e.g. Michroma) and were drawn without pixels. Now the style always brings its font; Block pixels get a hard offset shadow. · Пиксельные стили всегда рисуются своим шрифтом; у блочного — жёсткая тень.
 - Crash when the settings window was minimized after it became resizable (the clock preview got a negative width). · Падение при свёрнутом окне настроек.
 - "All users" updates: the elevation request always waits for the UAC answer, fresh update files are never cleaned up mid-update, and the log says whether rights were declined or the replacement failed. · Обновление «для всех»: надёжнее ожидание UAC, понятный журнал.
 - The installer window title is now translated ("Hora Setup"), and its question reads more naturally in English. · Заголовок установщика переведён.

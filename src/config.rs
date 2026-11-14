@@ -540,10 +540,10 @@ video_rotate = {video_rotate}
         s.chars().filter(|c| !c.is_control()).collect()
     }
 
-    /// Двоеточие сейчас мигает? Только в пиксельных стилях и только своим шрифтом (в нём есть
-    /// «пустое двоеточие» той же ширины — иначе цифры прыгали бы туда-сюда).
+    /// Двоеточие сейчас мигает? Только в пиксельных стилях: они всегда рисуются своими шрифтами,
+    /// а в них есть «пустое двоеточие» той же ширины — цифры не прыгают.
     pub fn blinking(&self) -> bool {
-        self.blink_colon && matches!(self.style.as_str(), "pixel" | "block") && (self.font.is_empty() || self.font.eq_ignore_ascii_case("auto"))
+        self.blink_colon && matches!(self.style.as_str(), "pixel" | "block")
     }
 
     /// Перерисовывать часы раз в секунду (секунды на экране или мигающее двоеточие).
