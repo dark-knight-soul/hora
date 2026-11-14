@@ -105,6 +105,13 @@ Hora talks only to open services and sends nothing about you:
 
 No telemetry, no accounts, no ads.
 
+## Versions and compatibility
+
+- **Version numbers** follow [SemVer](https://semver.org/): from 1.0 on, fixes bump the third number (1.0.**1**), new features the second (1.**1**.0), and the first changes only if something stops working the way it did.
+- **Settings never break.** A `config.ini` from any earlier version keeps working: new keys get defaults, old ones are still understood. A test checks this on every build.
+- **Updates are signed with one key.** An installed Hora accepts only a release signed with the same key as before.
+- **Windows** 10 (1809 or newer) and 11, 64-bit. All changes are in [CHANGELOG.md](CHANGELOG.md).
+
 ## Building from source
 
 All you need is Rust (stable, `x86_64-pc-windows-gnu` toolchain — installs without administrator rights via [rustup](https://rustup.rs)).

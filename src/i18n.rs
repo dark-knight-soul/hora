@@ -22,6 +22,13 @@ pub fn set_lang(setting: &str) {
         "ru" => 1,
         "en" => 2,
         _ => {
+            // HORA_UI_LANG=ru|en — как будто Windows на этом языке (проверка установщика и меню
+            // на «чужой» Windows, где настроек ещё нет)
+            let forced = std::env::var("HORA_UI_LANG").ok();
+            if let Some(v @ ("ru" | "en")) = forced.as_deref() {
+                LANG.store(if v == "en" { 2 } else { 1 }, Ordering::Relaxed);
+                return;
+            }
             if system_ru() {
                 1
             } else {
@@ -307,7 +314,8 @@ const PAIRS: &[(&str, &str)] = &[
     ("Загрузка…", "Loading…"),
     ("Язык окна и меню (часы — в разделе «Часы»)", "Language of the window and menu (the clock's language is in Clock)"),
     ("Установка Hora", "Hora Setup"),
-    ("Для кого установить Hora?", "Install Hora for whom?"),
+    ("Для кого установить Hora?", "Who should Hora be installed for?"),
+    ("Установка Hora", "Hora Setup"),
     ("Hora меняет обои, показывает часы и погоду на рабочем столе. Настройки у каждого пользователя свои.", "Hora changes your wallpaper and shows a clock and weather on the desktop. Each user has their own settings."),
     ("Не удалось установить Hora", "Could not install Hora"),
     ("не нашлась папка для программ", "the programs folder was not found"),
@@ -358,3 +366,75 @@ const PAIRS: &[(&str, &str)] = &[
     ("Ночь", "Night"),
     ("Цветная рамка — мониторы, на которых сейчас показываются часы", "Highlighted frame — monitors that show the clock now"),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::PAIRS;
+    use std::collections::HashSet;
+
+    /// Все строковые литералы со строки кода (без экранирования — у нас в подписях его нет).
+    fn literals(line: &str) -> Vec<&str> {
+        line.split('"').skip(1).step_by(2).collect()
+    }
+
+    fn cyrillic(s: &str) -> bool {
+        s.chars().any(|c| ('а'..='я').contains(&c.to_ascii_lowercase()) || ('А'..='Я').contains(&c) || c == 'ё' || c == 'Ё')
+    }
+
+    // Гарантия для английской Windows: у каждой русской подписи интерфейса есть перевод.
+    // Проверяем (1) всё, что передаётся в tr("…"), и (2) подписи в списках меню/настроек
+    // вида ("значение", "Подпись") в main.rs и ui.rs.
+    #[test]
+    fn every_label_has_english() {
+        let keys: HashSet<&str> = PAIRS.iter().map(|p| p.0).collect();
+        let sources = [
+            ("main.rs", include_str!("main.rs")),
+            ("ui.rs", include_str!("ui.rs")),
+            ("setup.rs", include_str!("setup.rs")),
+            ("update.rs", include_str!("update.rs")),
+            ("crash.rs", include_str!("crash.rs")),
+            ("live.rs", include_str!("live.rs")),
+            ("wallpaper.rs", include_str!("wallpaper.rs")),
+            ("http.rs", include_str!("http.rs")),
+            ("clock.rs", include_str!("clock.rs")),
+        ];
+        let mut missing = Vec::new();
+        let (mut calls, mut labels) = (0, 0);
+        for (file, text) in sources {
+            for (n, line) in text.lines().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                // (1) tr("…")
+                for part in code.split("tr(\"").skip(1) {
+                    if let Some(lit) = part.split('"').next() {
+                        calls += cyrillic(lit) as usize;
+                        if cyrillic(lit) && !keys.contains(lit) {
+                            missing.push(format!("{file}:{} tr(\"{lit}\")", n + 1));
+                        }
+                    }
+                }
+                // (2) элементы списков подписей: строка начинается с «(» и заканчивается «),»
+                let t = code.trim();
+                // (3) текстовые константы интерфейса: const ИМЯ: &str = "…"
+                if t.starts_with("const ") && t.contains(": &str = \"") {
+                    for lit in literals(t) {
+                        labels += cyrillic(lit) as usize;
+                        if cyrillic(lit) && !keys.contains(lit) {
+                            missing.push(format!("{file}:{} const «{lit}»", n + 1));
+                        }
+                    }
+                }
+                if (file == "main.rs" || file == "ui.rs") && t.starts_with('(') && t.ends_with("),") && !t.contains("tr(") {
+                    for lit in literals(t) {
+                        labels += cyrillic(lit) as usize;
+                        if cyrillic(lit) && !keys.contains(lit) {
+                            missing.push(format!("{file}:{} «{lit}»", n + 1));
+                        }
+                    }
+                }
+            }
+        }
+        // защита от «тест ничего не нашёл и потому прошёл»
+        assert!(calls > 150 && labels > 60, "проверено слишком мало: tr — {calls}, подписей в списках — {labels}");
+        assert!(missing.is_empty(), "нет английского перевода ({}):\n{}", missing.len(), missing.join("\n"));
+    }
+}

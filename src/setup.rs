@@ -77,7 +77,7 @@ fn dialog(d: &Dialog) -> (i32, bool) {
         let text = format!("{}\n\n{}", d.main, d.content);
         let yes_no = d.common & windows_sys::Win32::UI::Controls::TDCBF_YES_BUTTON != 0;
         let style = if yes_no { MB_YESNO } else { MB_OKCANCEL };
-        let r = unsafe { MessageBoxW(std::ptr::null_mut(), wide(&text).as_ptr(), wide(TITLE).as_ptr(), style | MB_ICONINFORMATION) };
+        let r = unsafe { MessageBoxW(std::ptr::null_mut(), wide(&text).as_ptr(), wide(tr(TITLE)).as_ptr(), style | MB_ICONINFORMATION) };
         let b = match r {
             IDYES => IDYES,
             IDOK => d.links.first().map(|l| l.0).unwrap_or(IDOK),
@@ -85,7 +85,7 @@ fn dialog(d: &Dialog) -> (i32, bool) {
         };
         return (b, d.check.map(|c| c.1).unwrap_or(false));
     };
-    let title = wide(TITLE);
+    let title = wide(tr(TITLE));
     let main = wide(d.main);
     let content = wide(d.content);
     let link_text: Vec<Vec<u16>> = d.links.iter().map(|l| wide(l.1)).collect();

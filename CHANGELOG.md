@@ -3,8 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added · Добавлено
+- Test that every Russian label has an English translation (199 strings in code, 67 menu items). · Тест полноты английского перевода.
+- "Versions and compatibility" section in the README: SemVer, config compatibility, signed updates. · Раздел «Версии и совместимость».
+
 ### Fixed · Исправлено
 - "All users" updates: the elevation request always waits for the UAC answer, fresh update files are never cleaned up mid-update, and the log says whether rights were declined or the replacement failed. · Обновление «для всех»: надёжнее ожидание UAC, понятный журнал.
+- The installer window title is now translated ("Hora Setup"), and its question reads more naturally in English. · Заголовок установщика переведён.
 - Updating after a long time no longer goes step by step (0.4 → 0.5 → 0.6): right before installing, Hora asks GitHub again and installs the newest version. · Обновление больше не идёт по ступенькам: перед установкой Hora перепроверяет последнюю версию.
 
 ## [0.6.0] — 2026-11-14
