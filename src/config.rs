@@ -123,7 +123,7 @@ impl Default for Config {
             update_check: true,
             hotkeys: true,
             hotkey_next: "Win+Alt+N".into(),
-            hotkey_fav: "Win+Alt+F".into(),
+            hotkey_fav: "Win+Alt+H".into(), // H — «сердечко» (Win+Alt+F часто занято)
             halo: false,
             weather: true,
             weather_city: String::new(),

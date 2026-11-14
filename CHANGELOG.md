@@ -4,7 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 ### Added · Добавлено
-- Global hotkeys: **Win+Alt+N** — next wallpaper, **Win+Alt+F** — add to favorites (change them in `config.ini`: `hotkey_next`, `hotkey_fav`; a combination taken by another program is marked in Settings → Other). · Горячие клавиши.
+- Global hotkeys: **Win+Alt+N** — next wallpaper, **Win+Alt+H** — add to favorites (change them in `config.ini`: `hotkey_next`, `hotkey_fav`; a combination taken by another program is marked in Settings → Other). · Горячие клавиши.
 - Pixel scoreboard: soft **glow** around the dots and an optional **blinking colon** (also for Block pixels). · Свечение точек и мигающее двоеточие.
 - The settings window remembers its size, position and maximized state. · Окно настроек запоминает размер и положение.
 - Two new clock styles: **Pixel scoreboard** (LED dots) and **Block pixels** (chunky squares). · Стили «Пиксельное табло» и «Блочный пиксель».
