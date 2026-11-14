@@ -462,7 +462,8 @@ pub fn open() {
             hIconSm: LoadIconW(hinst, 1 as _),
         };
         RegisterClassExW(&wc);
-        let style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
+        // WS_THICKFRAME + WS_MAXIMIZEBOX — окно можно растянуть и развернуть на весь экран
+        let style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
         let hwnd = CreateWindowExW(0, cls.as_ptr(), wide("Hora").as_ptr(), style, CW_USEDEFAULT, CW_USEDEFAULT, 960, 660, std::ptr::null_mut(), std::ptr::null_mut(), hinst, std::ptr::null());
         if hwnd.is_null() {
             return;
@@ -628,7 +629,7 @@ struct EditPos {
 unsafe fn resize_for_dpi(hwnd: HWND, dpi: u32) {
     let s = dpi as f32 / 96.0;
     let mut r = RECT { left: 0, top: 0, right: (960.0 * s) as i32, bottom: (660.0 * s) as i32 };
-    windows_sys::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, 0, 0, dpi);
+    windows_sys::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
     let (w, h) = (r.right - r.left, r.bottom - r.top);
     let (_, work) = clock::primary_monitor();
     let x = work.left + ((work.right - work.left) - w) / 2;
@@ -920,6 +921,22 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 SetTimer(hwnd, T_REFRESH, 2000, None);
                 // раз в 2 с — обновить цифру памяти и время в предпросмотре
                 InvalidateRect(hwnd, std::ptr::null(), 0);
+            }
+            0
+        }
+        // окно тянут за край или разворачивают — перерисовать целиком (буфер кадра пересоздастся сам)
+        WM_SIZE => {
+            InvalidateRect(hwnd, std::ptr::null(), 0);
+            0
+        }
+        // меньше этого размера разметка не помещается (меню слева + колонка настроек)
+        WM_GETMINMAXINFO => {
+            let mmi = lp as *mut MINMAXINFO;
+            if !mmi.is_null() {
+                let dpi = windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd).max(96);
+                let mut r = RECT { left: 0, top: 0, right: 760 * dpi as i32 / 96, bottom: 480 * dpi as i32 / 96 };
+                windows_sys::Win32::UI::HiDpi::AdjustWindowRectExForDpi(&mut r, WS_OVERLAPPEDWINDOW, 0, 0, dpi);
+                (*mmi).ptMinTrackSize = POINT { x: r.right - r.left, y: r.bottom - r.top };
             }
             0
         }
@@ -1958,8 +1975,10 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
 
     // предпросмотр и миниатюры готовим до начала рисования (им нужен &mut st)
     let side = p(220.0);
-    let cx0 = side + p(32.0);
-    let cwid = cw as f32 - cx0 - p(32.0);
+    // на широком (развёрнутом) окне содержимое не растягиваем бесконечно: колонка до 900 px по центру
+    let free = cw as f32 - side - p(64.0);
+    let cwid = free.min(p(900.0)).floor();
+    let cx0 = (side + p(32.0) + ((free - cwid) / 2.0).max(0.0)).floor();
     let prev_w = cwid.min(p(640.0));
     let prev_h = prev_w * 9.0 / 16.0;
     if let Some(sn) = snap {

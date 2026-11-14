@@ -31,7 +31,7 @@ pub struct Config {
     // --- часы ---
     pub clock: bool,
     pub clock_monitor: String, // primary | second | all
-    pub style: String,    // hero | minimal | split | vertical | words | calendar | outline | poster | line | techno | analog
+    pub style: String,    // hero | photo | minimal | pixel | block | split | vertical | words | calendar | outline | poster | line | techno | analog
     pub font: String,     // auto | имя шрифта для крупного текста
     pub font2: String,    // auto | имя шрифта для мелкого текста
     pub color: u32,       // 0xRRGGBB или COLOR_AUTO
@@ -363,6 +363,7 @@ clock = {clock}
 clock_monitor = {clock_monitor}
 ; стиль: hero (как на фото) | photo (точно как на фото — свой шрифт с разрывами) | minimal | split (время | дата) | vertical | words (словами)
 ;        calendar (большое число) | outline (контур) | poster | line (одной строкой) | techno | analog (стрелочные)
+;        pixel (пиксельное табло) | block (блочный пиксель)
 style = {style}
 ; шрифт крупного текста: auto | встроенные: Michroma, Unbounded, Jura, Russo One, Oswald, Comfortaa, Tektur,
 ;   Exo 2, Montserrat Alternates Light, Cormorant Garamond, Press Start 2P | или любой установленный (Bahnschrift, Georgia...)

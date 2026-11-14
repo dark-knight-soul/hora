@@ -355,6 +355,23 @@ fn build(cfg: &Config, st: &SysTime, k: f32) -> Layout {
             line(&time_ampm, big_face("Michroma", "Michroma"), px(0.11), 400, 0.38, px(0.04)),
             line(&t.date_full, small_face(), px(0.024), 300, 0.3, px(0.04)),
         ]),
+        // Пиксельное табло: время и подпись светящимися точками (свой шрифт Hora Pixel)
+        "pixel" => {
+            let small = if cfg.font2.is_empty() || cfg.font2.eq_ignore_ascii_case("auto") { "Hora Pixel".to_string() } else { cfg.font2.clone() };
+            Layout::Stack(vec![
+                line(&time_ampm, big_face("Hora Pixel", "Hora Pixel"), px(0.17), 400, 0.0, 0),
+                line(&format!("{} · {}", t.day_short, t.date_short), small, px(0.04), 400, 0.1, px(0.05)),
+            ])
+        }
+        // Блочный пиксель: крупные квадратные пиксели, как в играх-песочницах (свой шрифт Hora Block)
+        "block" => {
+            let small = if cfg.font2.is_empty() || cfg.font2.eq_ignore_ascii_case("auto") { "Hora Block".to_string() } else { cfg.font2.clone() };
+            Layout::Stack(vec![
+                line(&t.day, small.clone(), px(0.036), 400, 0.12, 0),
+                line(&time_ampm, big_face("Hora Block", "Hora Block"), px(0.18), 400, 0.0, px(0.035)),
+                line(&t.date_short, small, px(0.03), 400, 0.12, px(0.045)),
+            ])
+        }
         // Стрелочные часы
         "analog" => Layout::Dial {
             r: px(0.17),

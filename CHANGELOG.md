@@ -4,8 +4,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 ### Added · Добавлено
+- Two new clock styles: **Pixel scoreboard** (LED dots) and **Block pixels** (chunky squares). · Стили «Пиксельное табло» и «Блочный пиксель».
+- The settings window can be resized and maximized; on wide screens the content stays in a centered column. · Окно настроек можно растягивать и разворачивать.
 - Test that every Russian label has an English translation (199 strings in code, 67 menu items). · Тест полноты английского перевода.
 - "Versions and compatibility" section in the README: SemVer, config compatibility, signed updates. · Раздел «Версии и совместимость».
+
+### Changed · Изменено
+- Clock styles have short, clear names ("Big time", "Split letters", "Analog"…) — the preview shows what each looks like. · Понятные названия стилей.
 
 ### Fixed · Исправлено
 - "All users" updates: the elevation request always waits for the UAC answer, fresh update files are never cleaned up mid-update, and the log says whether rights were declined or the replacement failed. · Обновление «для всех»: надёжнее ожидание UAC, понятный журнал.

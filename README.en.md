@@ -21,7 +21,7 @@
 ## Features
 
 - 🖼 **Changes your wallpaper** on a timer: [Wallhaven](https://wallhaven.cc) by category (nature, mountains, space, city…), your own folder, or both. The same picture on every monitor, a different one on each, or **spanned** — one wide picture across all screens.
-- 🕰 **A big clock under your desktop icons** — 12 styles: spaced-out weekday, minimal, "time | date", in words ("quarter to two"), calendar, analog and more. Three custom fonts with Latin and Cyrillic: split letters, LED dots (Hora Pixel) and chunky block pixels (Hora Block). Automatic color from the wallpaper's brightness, plus a halo or a "frosted glass" plate behind the text on busy backgrounds.
+- 🕰 **A big clock under your desktop icons** — 14 styles: spaced-out weekday, big time, pixel scoreboard, block pixels, "time | date", in words ("quarter to two"), calendar, analog and more. Three custom fonts with Latin and Cyrillic: split letters, LED dots (Hora Pixel) and chunky block pixels (Hora Block). Automatic color from the wallpaper's brightness, plus a halo or a "frosted glass" plate behind the text on busy backgrounds.
 - ⛅ **Weather** from [Open-Meteo](https://open-meteo.com): icon, temperature, wind, humidity and a 3-day forecast.
 - ✨ **Live wallpapers** (optional): snow, rain, stars, falling leaves, fireflies or "match the weather" on top of your regular wallpaper — or **video instead of a picture**, including video wallpapers from the **Wallpaper Engine** Workshop.
 - ♥ **Favorites and a blacklist**: wallpapers you like come back from time to time, ones you don't are never shown again.
