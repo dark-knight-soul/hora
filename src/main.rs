@@ -821,6 +821,9 @@ impl App {
         if matches!(self.upd, UpdState::Checking | UpdState::Downloading(_)) {
             return;
         }
+        // заодно убрать остатки прошлого обновления: при запуске их не трогают, пока им нет 10 минут,
+        // а следующий запуск может быть через несколько дней
+        update::cleanup();
         self.upd = UpdState::Checking;
         let hwnd = self.hwnd as usize;
         let ok = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {

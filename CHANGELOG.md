@@ -3,6 +3,8 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed · Исправлено
+- Leftovers of an installed update are also cleaned up during the daily update check, not only at the next start. · Остатки обновления убираются и при ежедневной проверке.
 
 ## [0.7.0] — 2026-11-14
 ### Added · Добавлено
