@@ -54,6 +54,7 @@ pub struct Config {
     pub hotkeys: bool,       // глобальные горячие клавиши
     pub hotkey_next: String, // следующие обои, например Win+Alt+N
     pub hotkey_fav: String,  // текущие обои — в избранное
+    pub hotkey_open: String, // открыть окно настроек
     /// Не настройка, а подсказка при рисовании: фон под текстом пёстрый — нужен плотный ореол.
     pub halo: bool,
     // --- погода ---
@@ -124,6 +125,7 @@ impl Default for Config {
             hotkeys: true,
             hotkey_next: "Win+Alt+N".into(),
             hotkey_fav: "Win+Alt+H".into(), // H — «сердечко» (Win+Alt+F часто занято)
+            hotkey_open: "Win+Alt+O".into(), // O — open
             halo: false,
             weather: true,
             weather_city: String::new(),
@@ -285,6 +287,7 @@ impl Config {
                 "hotkeys" => c.hotkeys = parse_bool(&v).unwrap_or(c.hotkeys),
                 "hotkey_next" => c.hotkey_next = v,
                 "hotkey_fav" => c.hotkey_fav = v,
+                "hotkey_open" => c.hotkey_open = v,
                 "lang" => c.lang = v.to_lowercase(),
                 "time_format" => c.time_format = v.to_lowercase(),
                 "shadow" => c.shadow = parse_bool(&v).unwrap_or(c.shadow),
@@ -427,6 +430,8 @@ hotkeys = {hotkeys}
 hotkey_next = {hotkey_next}
 ; текущие обои — в избранное (повторно — убрать)
 hotkey_fav = {hotkey_fav}
+; открыть окно настроек
+hotkey_open = {hotkey_open}
 
 [weather]
 ; 1 = показывать виджет погоды на рабочем столе (данные: open-meteo.com, без ключа)
@@ -508,6 +513,7 @@ video_rotate = {video_rotate}
             hotkeys = b(self.hotkeys),
             hotkey_next = Self::clean(&self.hotkey_next),
             hotkey_fav = Self::clean(&self.hotkey_fav),
+            hotkey_open = Self::clean(&self.hotkey_open),
             weather = b(self.weather),
             weather_city = Self::clean(&self.weather_city),
             weather_lat = self.weather_lat,

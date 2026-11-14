@@ -297,7 +297,7 @@ const FONTS2: [(&str, &str); 11] = [
 const OPACITIES: [u32; 5] = [100, 85, 70, 55, 40];
 
 struct App {
-    hotkeys_ok: [bool; 2], // горячие клавиши зарегистрированы (следующие обои, в избранное)
+    hotkeys_ok: [bool; 3], // горячие клавиши зарегистрированы (следующие обои, в избранное, открыть окно)
     hwnd: HWND,
     cfg: Config,
     cfg_path: PathBuf,
@@ -907,12 +907,12 @@ impl App {
     }
 
     // ---- применение изменённых настроек ----
-    /// Горячие клавиши (работают в любом окне): следующие обои и «в избранное».
+    /// Горячие клавиши (работают в любом окне): следующие обои, «в избранное», окно настроек.
     /// Сочетание может быть занято другой программой — тогда оно просто не работает, а в окне
     /// настроек об этом написано.
     fn register_hotkeys(&mut self) {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
-        let keys = [self.cfg.hotkey_next.clone(), self.cfg.hotkey_fav.clone()];
+        let keys = [self.cfg.hotkey_next.clone(), self.cfg.hotkey_fav.clone(), self.cfg.hotkey_open.clone()];
         for (i, k) in keys.iter().enumerate() {
             let id = HOTKEY_IDS[i];
             unsafe { UnregisterHotKey(self.hwnd, id) };
@@ -937,7 +937,7 @@ impl App {
         if c.ui_lang != old.ui_lang {
             i18n::set_lang(&c.ui_lang); // окно и меню сразу на новом языке (окно перерисуется ниже)
         }
-        if c.hotkeys != old.hotkeys || c.hotkey_next != old.hotkey_next || c.hotkey_fav != old.hotkey_fav {
+        if c.hotkeys != old.hotkeys || c.hotkey_next != old.hotkey_next || c.hotkey_fav != old.hotkey_fav || c.hotkey_open != old.hotkey_open {
             self.register_hotkeys();
         }
         if c.update_check != old.update_check {
@@ -1664,6 +1664,11 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         }
         // горячие клавиши — как одноимённые пункты меню
         WM_HOTKEY => {
+            if wp as i32 == HOTKEY_IDS[2] {
+                // открыть окно настроек (или вывести вперёд; по горячей клавише Windows разрешает это сама)
+                ui::open();
+                return 0;
+            }
             let id = if wp as i32 == HOTKEY_IDS[0] { M_NEXT } else if wp as i32 == HOTKEY_IDS[1] { M_FAV } else { 0 };
             if id != 0 {
                 if let Some(After::Open(p)) = with_app(|a| on_menu(a, id)) {
@@ -1908,8 +1913,8 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
     }
 }
 
-/// Номера горячих клавиш: следующие обои, в избранное.
-const HOTKEY_IDS: [i32; 2] = [1, 2];
+/// Номера горячих клавиш: следующие обои, в избранное, окно настроек.
+const HOTKEY_IDS: [i32; 3] = [1, 2, 3];
 
 /// «Win+Alt+N» → (модификаторы, код клавиши). Клавиша: буква, цифра, F1–F24, стрелка, Space.
 fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
@@ -2170,7 +2175,7 @@ fn main() {
             banned_favs: Vec::new(),
             upd: UpdState::Idle,
             upd_notified: String::new(),
-            hotkeys_ok: [false; 2],
+            hotkeys_ok: [false; 3],
         };
         if first_run {
             app.save_cfg();

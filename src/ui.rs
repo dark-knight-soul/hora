@@ -323,7 +323,7 @@ struct Snap {
     ban_count: usize,  // в чёрном списке
     cur_fav: bool,     // текущие обои в избранном
     can_undo: bool,    // есть что «вернуть» из последних скрытых
-    hotkeys_ok: [bool; 2], // горячие клавиши зарегистрированы
+    hotkeys_ok: [bool; 3], // горячие клавиши зарегистрированы
     weather: Option<weather::Weather>,
     weather_status: String,
     weather_busy: bool,
@@ -1884,6 +1884,10 @@ fn get_thumb<'a>(thumbs: &'a mut Vec<(usize, i32, i32, Img)>, cache: &std::path:
 
 /// Предпросмотр: уменьшенные обои основного монитора и часы поверх них, как на рабочем столе.
 fn build_preview(st: &mut State, cfg: &Config, cache: &std::path::Path, w: i32, h: i32, wx: Option<&weather::Weather>) {
+    // слишком маленькое (например, свёрнутое) окно — предпросмотр не строим
+    if w < 16 || h < 16 {
+        return;
+    }
     let mut now: clock::SysTime = unsafe { std::mem::zeroed() };
     unsafe { windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut now) };
     let minute = now.wHour * 60 + now.wMinute;
@@ -1996,6 +2000,11 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
     let mut rc = RECT { left: 0, top: 0, right: 0, bottom: 0 };
     GetClientRect(st.hwnd, &mut rc);
     let (cw, ch) = (rc.right.max(1), rc.bottom.max(1));
+    // свёрнутое окно: размер почти нулевой — рисовать нечего (раньше тут предпросмотр получал
+    // отрицательную ширину и программа падала)
+    if IsIconic(st.hwnd) != 0 || cw < 64 || ch < 64 {
+        return;
+    }
     // буфер кадра (рисуем в память, потом одним махом на экран — без мерцания)
     if st.buf.map(|b| b.3 != cw || b.4 != ch).unwrap_or(true) {
         if let Some((dc, bmp, old, _, _)) = st.buf.take() {
@@ -2453,9 +2462,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                 // горячие клавиши: сочетания из config.ini; занятое другой программой — помечаем
                 let busy = |ok: bool| if !ok && sn.cfg.hotkeys { tr(" (занято)") } else { "" };
                 let hk = if crate::i18n::en() {
-                    format!("{}{} — next wallpaper · {}{} — add to favorites", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]))
+                    format!("{}{} — next wallpaper · {}{} — favorites · {}{} — this window", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]), sn.cfg.hotkey_open, busy(sn.hotkeys_ok[2]))
                 } else {
-                    format!("{}{} — следующие обои · {}{} — в избранное", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]))
+                    format!("{}{} — следующие обои · {}{} — в избранное · {}{} — это окно", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]), sn.cfg.hotkey_open, busy(sn.hotkeys_ok[2]))
                 };
                 y = c.toggle(x, y, w, tr("Горячие клавиши"), &hk, sn.cfg.hotkeys, M_HOTKEYS);
                 let items: Vec<_> = UI_THEMES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_UI_THEME + i, sn.cfg.ui_theme == *v)).collect();

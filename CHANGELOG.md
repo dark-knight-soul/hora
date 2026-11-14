@@ -4,7 +4,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ## [Unreleased]
 ### Added · Добавлено
-- Global hotkeys: **Win+Alt+N** — next wallpaper, **Win+Alt+H** — add to favorites (change them in `config.ini`: `hotkey_next`, `hotkey_fav`; a combination taken by another program is marked in Settings → Other). · Горячие клавиши.
+- Global hotkeys: **Win+Alt+N** — next wallpaper, **Win+Alt+H** — add to favorites, **Win+Alt+O** — open settings (change them in `config.ini`: `hotkey_next`, `hotkey_fav`, `hotkey_open`; a combination taken by another program is marked in Settings → Other). · Горячие клавиши.
 - Pixel scoreboard: soft **glow** around the dots and an optional **blinking colon** (also for Block pixels). · Свечение точек и мигающее двоеточие.
 - The settings window remembers its size, position and maximized state. · Окно настроек запоминает размер и положение.
 - Two new clock styles: **Pixel scoreboard** (LED dots) and **Block pixels** (chunky squares). · Стили «Пиксельное табло» и «Блочный пиксель».
@@ -16,6 +16,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 - Clock styles have short, clear names ("Big time", "Split letters", "Analog"…) — the preview shows what each looks like. · Понятные названия стилей.
 
 ### Fixed · Исправлено
+- Crash when the settings window was minimized after it became resizable (the clock preview got a negative width). · Падение при свёрнутом окне настроек.
 - "All users" updates: the elevation request always waits for the UAC answer, fresh update files are never cleaned up mid-update, and the log says whether rights were declined or the replacement failed. · Обновление «для всех»: надёжнее ожидание UAC, понятный журнал.
 - The installer window title is now translated ("Hora Setup"), and its question reads more naturally in English. · Заголовок установщика переведён.
 - Updating after a long time no longer goes step by step (0.4 → 0.5 → 0.6): right before installing, Hora asks GitHub again and installs the newest version. · Обновление больше не идёт по ступенькам: перед установкой Hora перепроверяет последнюю версию.
