@@ -51,6 +51,9 @@ static WEATHER_PENDING: std::sync::Mutex<Option<(f64, f64, Result<weather::Weath
 // результат смены обоев ждёт здесь, если в момент прихода состояние программы было занято
 static WP_PENDING: std::sync::Mutex<Option<wallpaper::Outcome>> = std::sync::Mutex::new(None);
 const T_WP_RETRY: usize = 9;
+const T_UPD_RETRY: usize = 15; // результат проверки/скачивания обновления ждёт свободного состояния
+static UPD_CHECKED: std::sync::Mutex<Option<(bool, Result<Option<update::Release>, String>)>> = std::sync::Mutex::new(None);
+static UPD_READY: std::sync::Mutex<Option<Result<PathBuf, String>>> = std::sync::Mutex::new(None);
 const T_SYS_RETRY: usize = 10;
 const T_ZFIX: usize = 11; // вернуть часы под иконки, если Explorer положил поверх свой слой
 const T_AFTER_WP: usize = 12; // повторная проверка часов после смены обоев
@@ -307,6 +310,7 @@ struct App {
     cache: PathBuf,
     clock: clock::Clock,
     busy: bool,
+    change_again: bool, // пока шёл подбор, поменяли категории — подобрать ещё раз по новым
     bg_busy: bool,
     bg_again: bool,
     current: Vec<PathBuf>, // обои, стоящие сейчас (одни или по одним на монитор)
@@ -735,6 +739,11 @@ impl App {
         self.start_bg();
         self.tick_clock();
         unsafe { SetTimer(self.hwnd, T_TRIM, 3000, None) };
+        if std::mem::take(&mut self.change_again) {
+            // подбор шёл по старым категориям — сразу подбираем ещё раз, по новым
+            log("категории поменялись во время подбора — подбираю ещё раз");
+            self.start_change();
+        }
     }
 
     // ---- фон под часами (копия обоев, масштабированная под экран) ----
@@ -973,7 +982,11 @@ impl App {
         let topics_now_changed = c.topics_at(hour) != old.topics_at(hour) && c.topics == old.topics;
         if (wall_keys_changed || topics_now_changed) && c.live != "video" {
             let _ = std::fs::create_dir_all(self.folder());
-            self.start_change();
+            if self.busy {
+                self.change_again = true; // идёт подбор по старым настройкам — повторим после него
+            } else {
+                self.start_change();
+            }
         }
         let weather_changed = c.weather != old.weather || c.weather_lat != old.weather_lat || c.weather_lon != old.weather_lon || c.weather_city != old.weather_city;
         if weather_changed {
@@ -1680,19 +1693,36 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             0
         }
         WM_UPDATE_CHECKED => {
-            if let Some(r) = util::parcel_take::<Result<Option<update::Release>, String>>(lp) {
-                let manual = wp != 0;
-                if with_app(|a| a.update_checked(manual, r.clone())).is_none() {
-                    // состояние занято — проверим ещё раз позже
-                    SetTimer(hwnd, T_UPDATE, 2_000, None);
+            // как с обоями: результат — в ячейку, забираем, когда состояние программы свободно
+            match util::parcel_take::<Result<Option<update::Release>, String>>(lp) {
+                Some(r) => *UPD_CHECKED.lock().unwrap() = Some((wp != 0, r)),
+                None if lp != 0 => return 0,
+                None => {}
+            }
+            let done = with_app(|a| {
+                if let Some((manual, r)) = UPD_CHECKED.lock().unwrap().take() {
+                    a.update_checked(manual, r);
                 }
+            });
+            if done.is_none() {
+                SetTimer(hwnd, T_UPD_RETRY, 200, None);
             }
             0
         }
         WM_UPDATE_READY => {
-            if let Some(r) = util::parcel_take::<Result<PathBuf, String>>(lp) {
-                if with_app(|a| a.update_ready(r)).unwrap_or(false) {
+            match util::parcel_take::<Result<PathBuf, String>>(lp) {
+                Some(r) => *UPD_READY.lock().unwrap() = Some(r),
+                None if lp != 0 => return 0,
+                None => {}
+            }
+            let quit = with_app(|a| UPD_READY.lock().unwrap().take().map(|r| a.update_ready(r)).unwrap_or(false));
+            match quit {
+                Some(true) => {
                     DestroyWindow(hwnd); // закрываемся — новая версия встанет на место и запустится
+                }
+                Some(false) => {}
+                None => {
+                    SetTimer(hwnd, T_UPD_RETRY, 200, None);
                 }
             }
             0
@@ -1700,7 +1730,8 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         WM_WP_DONE => {
             match util::parcel_take::<wallpaper::Outcome>(lp) {
                 Some(out) => *WP_PENDING.lock().unwrap() = Some(out),
-                None => return 0, // не наша посылка (поддельное сообщение)
+                None if lp != 0 => return 0, // не наша посылка (поддельное сообщение)
+                None => {}                   // повтор от T_WP_RETRY: результат уже лежит в ячейке
             }
             let done = with_app(|a| {
                 if let Some(out) = WP_PENDING.lock().unwrap().take() {
@@ -1737,6 +1768,15 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 T_WP_RETRY => {
                     KillTimer(hwnd, T_WP_RETRY);
                     PostMessageW(hwnd, WM_WP_DONE, 0, 0);
+                }
+                T_UPD_RETRY => {
+                    KillTimer(hwnd, T_UPD_RETRY);
+                    if UPD_CHECKED.lock().unwrap().is_some() {
+                        PostMessageW(hwnd, WM_UPDATE_CHECKED, 0, 0);
+                    }
+                    if UPD_READY.lock().unwrap().is_some() {
+                        PostMessageW(hwnd, WM_UPDATE_READY, 0, 0);
+                    }
                 }
                 T_ZFIX => {
                     KillTimer(hwnd, T_ZFIX);
@@ -1806,7 +1846,8 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             // результат кладём в «ячейку» и забираем, когда состояние программы свободно
             match util::parcel_take::<(f64, f64, Result<weather::Weather, String>)>(lp) {
                 Some(r) => *WEATHER_PENDING.lock().unwrap() = Some(r),
-                None => return 0, // не наша посылка
+                None if lp != 0 => return 0, // не наша посылка
+                None => {}                   // повтор от T_WEATHER_RETRY — берём из ячейки
             }
             let done = with_app(|a| {
                 if let Some((lat, lon, r)) = WEATHER_PENDING.lock().unwrap().take() {
@@ -1953,6 +1994,14 @@ static CRASH_BALLOON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     // установка и удаление (HoraSetup.exe, «Параметры → Приложения»)
+    // тихая установка и удаление — ключи в любом порядке (HoraSetup.exe --all-users --silent)
+    let has = |f: &str| args.iter().skip(1).any(|a| a.eq_ignore_ascii_case(f));
+    if has("--uninstall") {
+        return setup::uninstall();
+    }
+    if has("--silent") && !has("--install-all") && !has("--uninstall-system") {
+        std::process::exit(setup::silent_install(has("--all-users")));
+    }
     match args.get(1).map(|s| s.as_str()) {
         Some("--uninstall") => return setup::uninstall(),
         // тихая установка для winget: HoraSetup.exe --silent [--all-users]
@@ -2155,6 +2204,7 @@ fn main() {
             cache: cache.clone(),
             clock: clock::Clock::new(hinst, cache.clone()),
             busy: false,
+            change_again: false,
             bg_busy: false,
             bg_again: false,
             current: Vec::new(),

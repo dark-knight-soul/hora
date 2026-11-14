@@ -46,6 +46,45 @@ pub const TOPICS: [(&str, &str, &str, &str); 34] = [
     ("macro", "Макро", "macro", "100"),
 ];
 
+/// «Фото»-категории: на Wallhaven поиск по слову («mountains») в общем разделе находит и игровой,
+/// и нарисованный арт (Firewatch, пиксель-арт). Для них тег обязателен («+»), а игры и цифровой
+/// арт исключены (проверено на живых запросах: остаются фотографии).
+const PHOTO_TOPICS: [&str; 20] = [
+    "nature", "mountains", "sea", "forest", "sunset", "winter", "city", "architecture", "animals", "cars",
+    "flowers", "lake", "waterfall", "desert", "autumn", "aurora", "clouds", "japan", "cats", "macro",
+];
+const NOT_ART: &str = r#" -"video games" -"video game art" -"pixel art" -"digital art""#;
+
+/// Запрос Wallhaven для категории.
+pub fn topic_query(t: &(&str, &str, &str, &str)) -> String {
+    if PHOTO_TOPICS.contains(&t.0) {
+        format!("+{}{}", t.2, NOT_ART)
+    } else {
+        t.2.to_string()
+    }
+}
+
+/// Какая категория у картинок в кэше: cache\topics.txt, строки «имя_файла<TAB>категория».
+/// Нужно запасному пути: без сети берём из кэша только картинки выбранных категорий.
+fn topics_file(cache: &Path) -> PathBuf {
+    cache.join("topics.txt")
+}
+
+fn read_topics(cache: &Path) -> Vec<(String, String)> {
+    std::fs::read_to_string(topics_file(cache))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.split_once('\t').map(|(a, b)| (a.to_lowercase(), b.to_string())))
+        .collect()
+}
+
+fn remember_topic(cache: &Path, name: &str, topic: &str) {
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(topics_file(cache)) {
+        let _ = writeln!(f, "{}\t{}", name.to_lowercase(), topic);
+    }
+}
+
 /// Список выбранных категорий из строки настроек.
 pub fn selected_topics(topics: &str) -> Vec<&'static (&'static str, &'static str, &'static str, &'static str)> {
     let ids: Vec<&str> = topics.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
@@ -192,7 +231,8 @@ fn pick_one(cfg: &Config, dirs: &Dirs, exclude: &[PathBuf], screen: (i32, i32), 
                 vec![Src::Folder, Src::Wallhaven, Src::Cache]
             }
         }
-        _ => vec![Src::Wallhaven, Src::Folder, Src::Cache],
+        // источник — только Wallhaven: в свою папку не лезем (там может быть что угодно)
+        _ => vec![Src::Wallhaven, Src::Cache],
     };
     // иногда (favorites_mix %) вместо новой картинки показываем что-то из избранного
     if !only_fav && cfg.favorites_mix > 0 && rng.below(100) < cfg.favorites_mix as usize && !list_images(&dirs.favorites).is_empty() {
@@ -203,7 +243,7 @@ fn pick_one(cfg: &Config, dirs: &Dirs, exclude: &[PathBuf], screen: (i32, i32), 
         let got = match src {
             Src::Wallhaven => from_wallhaven(cfg, dirs, screen, wide, rng),
             Src::Folder => pick_local(&dirs.folder, exclude, &dirs.banned, true, rng).ok_or_else(|| tr("в своей папке нет картинок").to_string()),
-            Src::Cache => pick_local(&dirs.cache, exclude, &dirs.banned, true, rng).ok_or_else(|| tr("кэш пуст").to_string()),
+            Src::Cache => pick_cache(cfg, dirs, exclude, rng).ok_or_else(|| tr("в кэше нет картинок выбранных категорий").to_string()),
             // из избранного повтор текущей допустим, только когда кроме избранного ничего не нужно
             Src::Favorites => pick_local(&dirs.favorites, exclude, &dirs.banned, only_fav, rng).ok_or_else(|| tr("в избранном нет других картинок").to_string()),
         };
@@ -218,6 +258,35 @@ fn pick_one(cfg: &Config, dirs: &Dirs, exclude: &[PathBuf], screen: (i32, i32), 
         }
     }
     Err(errors.join("; "))
+}
+
+/// Картинка из кэша — только из выбранных категорий (если категории не выбраны — любая).
+/// Без этого при недоступном Wallhaven вместо «Природы» вставали игры, скачанные раньше.
+fn pick_cache(cfg: &Config, dirs: &Dirs, exclude: &[PathBuf], rng: &mut Rng) -> Option<PathBuf> {
+    let topics = selected_topics(&cfg.topics);
+    if topics.is_empty() {
+        return pick_local(&dirs.cache, exclude, &dirs.banned, true, rng);
+    }
+    let tags = read_topics(&dirs.cache);
+    let ok_names: Vec<&str> = tags.iter().filter(|(_, t)| topics.iter().any(|x| x.0 == t)).map(|(n, _)| n.as_str()).collect();
+    let taken: Vec<String> = exclude.iter().map(|p| key_of(p)).collect();
+    let mut all: Vec<PathBuf> = list_images(&dirs.cache)
+        .into_iter()
+        .filter(|p| {
+            let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+            ok_names.contains(&name.as_str()) && !dirs.banned.contains(&key_of(p))
+        })
+        .collect();
+    let rest: Vec<PathBuf> = all.iter().filter(|p| !taken.contains(&key_of(p))).cloned().collect();
+    if !rest.is_empty() {
+        all = rest;
+    }
+    if all.is_empty() {
+        None
+    } else {
+        let i = rng.below(all.len());
+        Some(all.swap_remove(i))
+    }
 }
 
 fn ratio_for(w: i32, h: i32) -> &'static str {
@@ -304,13 +373,13 @@ pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool,
     let random = cfg.sorting == "random";
     // категория: случайная из выбранных; иначе — свой запрос из настроек
     let topics = selected_topics(&cfg.topics);
-    let (query, categories, top_range) = if topics.is_empty() {
-        (cfg.query.trim().to_string(), cfg.categories.clone(), cfg.top_range.clone())
+    let (query, categories, top_range, topic) = if topics.is_empty() {
+        (cfg.query.trim().to_string(), cfg.categories.clone(), cfg.top_range.clone(), "")
     } else {
         let t = topics[rng.below(topics.len())];
         // в узкой категории за месяц бывает всего несколько картинок — берём популярное за год
         let range = if cfg.top_range == "1M" { "1y".to_string() } else { cfg.top_range.clone() };
-        (t.2.to_string(), t.3.to_string(), range)
+        (topic_query(t), t.3.to_string(), range, t.0)
     };
     let mut all_seen = false;
     for (atleast, ratios) in variants {
@@ -326,6 +395,7 @@ pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool,
             base += &format!("&q={}", url_encode(&query));
         }
         let mut last_page = 0usize; // сколько всего страниц — узнаём из первого ответа
+        let mut page = 1usize;
         // несколько попыток: если на странице всё уже было — берём другую
         for attempt in 0..4 {
             let url = if random {
@@ -335,14 +405,16 @@ pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool,
                 format!("{base}&sorting=random&seed={seed}")
             } else {
                 // берём случайную страницу из первых восьми (самые популярные)
-                let page = if last_page == 0 { 1 + rng.below(3) } else { 1 + rng.below(last_page.min(8)) };
+                page = if last_page == 0 { 1 + rng.below(3) } else { 1 + rng.below(last_page.min(8)) };
                 format!("{base}&sorting=toplist&topRange={}&page={page}", url_encode(&top_range))
             };
             let json = http::get_text(&url)?;
             last_page = json_number(&json, "last_page").unwrap_or(1).max(1);
             let paths: Vec<String> = extract_paths(&json).into_iter().filter(|p| safe_image_url(p)).collect();
             if paths.is_empty() {
-                if attempt < 2 && !random && last_page > 1 {
+                // пусто: либо страниц больше одной, либо попросили страницу за пределами (у узких
+                // категорий страница всего одна) — пробуем ещё раз уже в пределах last_page
+                if attempt < 2 && !random && (last_page > 1 || page > last_page) {
                     continue;
                 }
                 break; // в этом варианте ничего нет — пробуем следующий
@@ -362,6 +434,7 @@ pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool,
             let name = pick.rsplit('/').next().unwrap();
             let dst = dirs.cache.join(name);
             http::download(pick, &dst)?;
+            remember_topic(&dirs.cache, name, topic);
             return Ok(dst);
         }
     }
@@ -426,6 +499,16 @@ fn prune_cache(cache: &Path, keep: usize, current: &[PathBuf]) {
         if !current.contains(&p) {
             let _ = std::fs::remove_file(p);
         }
+    }
+    // записи о категориях — только для файлов, что остались
+    let tags = read_topics(cache);
+    if !tags.is_empty() {
+        let kept: String = tags
+            .iter()
+            .filter(|(n, _)| cache.join(n).exists())
+            .map(|(n, t)| format!("{n}\t{t}\n"))
+            .collect();
+        let _ = std::fs::write(topics_file(cache), kept);
     }
 }
 

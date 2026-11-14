@@ -50,9 +50,41 @@ unsafe extern "system" fn on_exception(ep: *const windows_sys::Win32::System::Di
     if !ep.is_null() && !(*ep).ExceptionRecord.is_null() {
         let rec = &*(*ep).ExceptionRecord;
         let addr = rec.ExceptionAddress as usize;
-        handle(&format!("exception: 0x{:08X}\nat: {}", rec.ExceptionCode as u32, module_offset(addr)));
+        let mut text = format!("exception: 0x{:08X}\nat: {}", rec.ExceptionCode as u32, module_offset(addr));
+        // обращение к чужой памяти: что делали (чтение/запись) и по какому адресу
+        if rec.ExceptionCode as u32 == 0xC000_0005 && rec.NumberParameters >= 2 {
+            let kind = match rec.ExceptionInformation[0] {
+                0 => "read",
+                1 => "write",
+                8 => "execute",
+                _ => "?",
+            };
+            text += &format!("\naccess: {kind} 0x{:X}", rec.ExceptionInformation[1]);
+        }
+        text += &stack_in_hora();
+        handle(&text);
     }
     1 // EXCEPTION_EXECUTE_HANDLER — завершить процесс
+}
+
+/// Несколько адресов возврата внутри самой Hora — по ним видно, из какого места кода
+/// был вызов, который упал внутри системной библиотеки.
+fn stack_in_hora() -> String {
+    use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+    let mut frames = [std::ptr::null_mut::<std::ffi::c_void>(); 48];
+    let n = unsafe { windows_sys::Win32::System::Diagnostics::Debug::RtlCaptureStackBackTrace(0, frames.len() as u32, frames.as_mut_ptr(), std::ptr::null_mut()) } as usize;
+    let base = unsafe { GetModuleHandleW(std::ptr::null()) } as usize;
+    // размер образа exe — из заголовка PE (SizeOfImage)
+    let size = unsafe {
+        let pe = base + *((base + 0x3C) as *const u32) as usize;
+        *((pe + 24 + 56) as *const u32) as usize
+    };
+    let ours: Vec<String> = frames[..n].iter().map(|f| *f as usize).filter(|a| *a >= base && *a < base + size).take(10).map(|a| format!("0x{:X}", a - base)).collect();
+    if ours.is_empty() {
+        String::new()
+    } else {
+        format!("\nstack (Hora.exe+): {}", ours.join(" "))
+    }
 }
 
 /// «Hora.exe+0x1A2B3» — по смещению внутри модуля место находится в той же сборке.

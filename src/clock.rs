@@ -762,7 +762,9 @@ fn compose_with(cfg: &Config, st: &SysTime, area: (i32, i32), fonts: &mut FontSt
                         let prev = SelectObject(dc, ms[*line].font as _);
                         SetTextCharacterExtra(dc, l.spacing);
                         let r = (l.font.px as f32 * l.bold).round() as i32;
-                        if r <= 0 {
+                        if l.text.is_empty() {
+                            // пустая строка — выводить нечего (и не отдаём системе «пустой» указатель)
+                        } else if r <= 0 {
                             TextOutW(dc, x + m_s, y + m_s, l.text.as_ptr(), l.text.len() as i32);
                         } else {
                             // утолщение штрихов: та же строка со сдвигами внутри круга радиуса r

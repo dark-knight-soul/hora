@@ -1495,13 +1495,18 @@ impl<'a> Ctx<'a> {
         }
     }
     fn text(&mut self, x: f32, y: f32, w: f32, h: f32, s: &str, f: F, color: u32, flags: u32) {
-        if self.dry || !self.visible(y, h) {
+        // пустую строку не рисуем: DrawTextW с длиной 0 всё равно читает первый символ, а у пустого
+        // Vec указатель «заглушка» (0x2) — падение в USER32 (так было в разделе «Погода» без данных)
+        if s.is_empty() || self.dry || !self.visible(y, h) {
             return;
         }
         let r = RECT { left: x as i32, top: y as i32, right: (x + w) as i32, bottom: (y + h) as i32 };
         self.texts.push(TextCmd { r, s: s.encode_utf16().collect(), f, color, flags });
     }
     fn text_w(&self, s: &str, f: F) -> f32 {
+        if s.is_empty() {
+            return 0.0;
+        }
         unsafe {
             let old = SelectObject(self.hdc, self.fonts.get(f) as _);
             let w: Vec<u16> = s.encode_utf16().collect();
@@ -1876,6 +1881,11 @@ impl<'a> Ctx<'a> {
 
 fn get_thumb<'a>(thumbs: &'a mut Vec<(usize, i32, i32, Img)>, cache: &std::path::Path, mon: usize, w: i32, h: i32) -> Option<&'a Img> {
     if !thumbs.iter().any(|t| t.0 == mon && t.1 == w && t.2 == h) {
+        // не копим: при растягивании окна размер меняется на каждый пиксель — без предела
+        // миниатюр набегали бы сотни мегабайт; восьми хватает на все разделы сразу
+        if thumbs.len() >= 8 {
+            thumbs.remove(0);
+        }
         let px = bg::thumbnail(&bg::file_for(cache, mon), w, h).unwrap_or_default();
         thumbs.push((mon, w, h, Img { w, h, px }));
     }
@@ -2560,7 +2570,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
     for t in &mut c.texts {
         SelectObject(mdc, c.fonts.get(t.f) as _);
         SetTextColor(mdc, t.color);
-        DrawTextW(mdc, t.s.as_mut_ptr(), t.s.len() as i32, &mut t.r, t.flags | DT_NOPREFIX);
+        if !t.s.is_empty() {
+            DrawTextW(mdc, t.s.as_mut_ptr(), t.s.len() as i32, &mut t.r, t.flags | DT_NOPREFIX);
+        }
     }
     let slider_track = c.slider_track;
     let hits = std::mem::take(&mut c.hits);

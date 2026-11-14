@@ -377,6 +377,7 @@ const PAIRS: &[(&str, &str)] = &[
     ("Windows не принял картинку как обои", "Windows did not accept the picture as wallpaper"),
     ("в своей папке нет картинок", "no pictures in your folder"),
     ("кэш пуст", "the cache is empty"),
+    ("в кэше нет картинок выбранных категорий", "no cached pictures of the selected categories"),
     ("в избранном нет других картинок", "no other pictures in favorites"),
     ("на Wallhaven не нашлось новых картинок (все уже были)", "no new pictures on Wallhaven (all were already shown)"),
     ("Wallhaven ничего не нашёл по этим настройкам", "Wallhaven found nothing for these settings"),
