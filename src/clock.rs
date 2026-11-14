@@ -137,6 +137,11 @@ fn texts(cfg: &Config, st: &SysTime) -> Texts {
     if cfg.seconds {
         time += &format!(":{:02}", st.wSecond);
     }
+    // мигающее двоеточие: в нечётные секунды — «пустое двоеточие» U+E000 той же ширины
+    // (есть только в шрифтах Hora Pixel и Hora Block — cfg.blinking() это и проверяет)
+    if cfg.blinking() && st.wSecond % 2 == 1 {
+        time = time.replace(':', "\u{E000}");
+    }
     let (day, day_short, date_full, date_short) = if en {
         (
             DAYS_EN[dow].to_uppercase(),
@@ -838,6 +843,10 @@ fn compose_with(cfg: &Config, st: &SysTime, area: (i32, i32), fonts: &mut FontSt
                     _ => {}
                 }
             }
+            // «Пиксельное табло»: точки светятся (радиус — около половины точки шрифта)
+            if cfg.style == "pixel" && cfg.pixel_glow {
+                led_glow(&mut alpha, cw, ch, ((max_px as f32) * 0.05).round().max(1.0) as i32);
+            }
             let text = bbox(&alpha, cw, ch).unwrap_or(RECT { left: 0, top: 0, right: 1, bottom: 1 });
             let mut all = text;
             if cfg.shadow {
@@ -1017,6 +1026,19 @@ fn bbox(a: &[u8], w: i32, h: i32) -> Option<RECT> {
 }
 
 /// Быстрое «прямоугольное» размытие (3 прохода ≈ гауссово).
+/// Свечение «светодиодов»: размытая копия букв того же цвета, мягко вокруг каждой точки.
+fn led_glow(alpha: &mut [u8], w: i32, h: i32, r: i32) {
+    let mut g = alpha.to_vec();
+    for _ in 0..3 {
+        box_blur(&mut g, w, h, r);
+    }
+    for i in 0..alpha.len() {
+        let a = alpha[i] as u32;
+        let gv = (g[i] as u32 * 2).min(255) * 120 / 255; // примерно половина яркости букв
+        alpha[i] = (a + gv * (255 - a) / 255).min(255) as u8;
+    }
+}
+
 fn box_blur(buf: &mut [u8], w: i32, h: i32, r: i32) {
     if r <= 0 {
         return;
@@ -1780,7 +1802,7 @@ impl Clock {
         // Кэш размытых обоев держим, только когда он окупается: часы обновляются каждую секунду
         // или открыто окно настроек (там щелчки часто перерисовывают часы). Иначе — память дороже.
         let slot = (mon_idx, weather.is_some());
-        let keep = plate.is_some() && (cfg.seconds || crate::ui::is_open());
+        let keep = plate.is_some() && (cfg.every_second() || crate::ui::is_open());
         if !keep {
             self.blur_cache.retain(|(s, _)| *s != slot);
             if self.blur_cache.is_empty() {
@@ -2109,7 +2131,7 @@ pub fn ms_to_next_tick(cfg: &Config) -> u32 {
     let mut st: SysTime = unsafe { std::mem::zeroed() };
     unsafe { windows_sys::Win32::System::SystemInformation::GetLocalTime(&mut st) };
     let ms = st.wMilliseconds as u32;
-    if cfg.seconds {
+    if cfg.every_second() {
         1000 - ms + 15
     } else {
         (59 - st.wSecond as u32) * 1000 + (1000 - ms) + 30
@@ -2191,4 +2213,39 @@ pub fn render_test(cfg: &Config, out: &std::path::Path, area: (i32, i32), weathe
     f.extend_from_slice(&[0u8; 24]);
     f.extend_from_slice(&data);
     std::fs::write(out, f).is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // мигающее двоеточие: в нечётную секунду «:» заменяется пустым символом той же ширины,
+    // и только в пиксельных стилях своим шрифтом
+    #[test]
+    fn blinking_colon() {
+        let mut st: SysTime = unsafe { std::mem::zeroed() };
+        st.wYear = 2026;
+        st.wMonth = 11;
+        st.wDay = 14;
+        st.wHour = 14;
+        st.wMinute = 5;
+        st.wSecond = 7;
+        let mut cfg = Config::default();
+        cfg.lang = "ru".into();
+        cfg.time_format = "24".into();
+        cfg.style = "pixel".into();
+        cfg.blink_colon = true;
+        assert_eq!(texts(&cfg, &st).time, "14\u{E000}05");
+        st.wSecond = 8;
+        assert_eq!(texts(&cfg, &st).time, "14:05");
+        st.wSecond = 7;
+        cfg.font = "Jura".into(); // чужой шрифт — пустого двоеточия в нём нет
+        assert_eq!(texts(&cfg, &st).time, "14:05");
+        cfg.font = "auto".into();
+        cfg.style = "minimal".into();
+        assert_eq!(texts(&cfg, &st).time, "14:05");
+        assert!(!cfg.every_second());
+        cfg.style = "block".into();
+        assert!(cfg.every_second());
+    }
 }

@@ -143,6 +143,8 @@ const M_STYLE: usize = 210; // +индекс
 const M_SECONDS: usize = 225;
 const M_H24: usize = 226;
 const M_SHADOW: usize = 227;
+const M_GLOW: usize = 228; // «Пиксельное табло»: свечение точек
+const M_BLINK: usize = 229; // мигающее двоеточие (пиксельные стили)
 const M_LANG: usize = 230; // +индекс
 const M_POS: usize = 240; // +индекс
 const M_SCALE: usize = 260; // +индекс
@@ -157,6 +159,7 @@ const M_OPEN_LOG: usize = 700;
 const M_OPEN_DIR: usize = 701;
 const M_SETTINGS: usize = 702;
 const M_REPORT: usize = 703; // сообщить о проблеме на GitHub
+const M_HOTKEYS: usize = 704; // горячие клавиши вкл/выкл
 const M_UI_THEME: usize = 720; // +индекс
 const M_UI_LANG: usize = 960; // +индекс в UI_LANGS
 const M_UPDATE_NOW: usize = 970; // обновить до найденной версии
@@ -294,6 +297,7 @@ const FONTS2: [(&str, &str); 11] = [
 const OPACITIES: [u32; 5] = [100, 85, 70, 55, 40];
 
 struct App {
+    hotkeys_ok: [bool; 2], // горячие клавиши зарегистрированы (следующие обои, в избранное)
     hwnd: HWND,
     cfg: Config,
     cfg_path: PathBuf,
@@ -595,7 +599,7 @@ impl App {
         watch_desktop(self.clock.host_window());
         unsafe { SetTimer(self.hwnd, T_CLOCK, clock::ms_to_next_tick(&self.cfg), None) };
         ui::refresh();
-        if !self.cfg.seconds && !ui::is_open() {
+        if !self.cfg.every_second() && !ui::is_open() {
             util::trim_memory();
         }
     }
@@ -903,10 +907,38 @@ impl App {
     }
 
     // ---- применение изменённых настроек ----
+    /// Горячие клавиши (работают в любом окне): следующие обои и «в избранное».
+    /// Сочетание может быть занято другой программой — тогда оно просто не работает, а в окне
+    /// настроек об этом написано.
+    fn register_hotkeys(&mut self) {
+        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
+        let keys = [self.cfg.hotkey_next.clone(), self.cfg.hotkey_fav.clone()];
+        for (i, k) in keys.iter().enumerate() {
+            let id = HOTKEY_IDS[i];
+            unsafe { UnregisterHotKey(self.hwnd, id) };
+            self.hotkeys_ok[i] = false;
+            if !self.cfg.hotkeys {
+                continue;
+            }
+            match parse_hotkey(k) {
+                Some((mods, vk)) => {
+                    self.hotkeys_ok[i] = unsafe { RegisterHotKey(self.hwnd, id, mods | MOD_NOREPEAT, vk) } != 0;
+                    if !self.hotkeys_ok[i] {
+                        log(&format!("горячая клавиша {k} занята другой программой"));
+                    }
+                }
+                None => log(&format!("горячая клавиша «{k}» не распознана (пример: Win+Alt+N)")),
+            }
+        }
+    }
+
     fn apply_cfg(&mut self, old: &Config) {
         let c = self.cfg.clone();
         if c.ui_lang != old.ui_lang {
             i18n::set_lang(&c.ui_lang); // окно и меню сразу на новом языке (окно перерисуется ниже)
+        }
+        if c.hotkeys != old.hotkeys || c.hotkey_next != old.hotkey_next || c.hotkey_fav != old.hotkey_fav {
+            self.register_hotkeys();
         }
         if c.update_check != old.update_check {
             unsafe {
@@ -1207,6 +1239,12 @@ fn build_menu(a: &App, bitmaps: &mut Vec<windows_sys::Win32::Graphics::Gdi::HBIT
         add(mc, M_SECONDS, tr("Секунды"), c.seconds);
         add(mc, M_H24, tr("24-часовой формат"), c.is_24h());
         add(mc, M_SHADOW, tr("Тень под текстом"), c.shadow);
+        if c.style == "pixel" {
+            add(mc, M_GLOW, tr("Свечение точек"), c.pixel_glow);
+        }
+        if c.style == "pixel" || c.style == "block" {
+            add(mc, M_BLINK, tr("Мигающее двоеточие"), c.blink_colon);
+        }
         let mb = CreatePopupMenu();
         for (i, (v, t)) in BACKDROPS.iter().enumerate() {
             add(mb, M_BACKDROP + i, tr(t), c.backdrop == *v);
@@ -1506,6 +1544,9 @@ fn on_menu(a: &mut App, id: usize) -> After {
         M_SECONDS => a.cfg.seconds = !a.cfg.seconds,
         M_H24 => a.cfg.time_format = if a.cfg.is_24h() { "12".into() } else { "24".into() },
         M_SHADOW => a.cfg.shadow = !a.cfg.shadow,
+        M_GLOW => a.cfg.pixel_glow = !a.cfg.pixel_glow,
+        M_BLINK => a.cfg.blink_colon = !a.cfg.blink_colon,
+        M_HOTKEYS => a.cfg.hotkeys = !a.cfg.hotkeys,
         x if (M_LANG..M_LANG + LANGS.len()).contains(&x) => {
             a.cfg.lang = LANGS[x - M_LANG].0.into();
             a.cfg.time_format = "auto".into();
@@ -1618,6 +1659,17 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                     }
                 }
                 _ => {}
+            }
+            0
+        }
+        // горячие клавиши — как одноимённые пункты меню
+        WM_HOTKEY => {
+            let id = if wp as i32 == HOTKEY_IDS[0] { M_NEXT } else if wp as i32 == HOTKEY_IDS[1] { M_FAV } else { 0 };
+            if id != 0 {
+                if let Some(After::Open(p)) = with_app(|a| on_menu(a, id)) {
+                    ShellExecuteW(hwnd, wide("open").as_ptr(), wide_os(p.as_os_str()).as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL);
+                }
+                ui::refresh();
             }
             0
         }
@@ -1856,6 +1908,39 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
     }
 }
 
+/// Номера горячих клавиш: следующие обои, в избранное.
+const HOTKEY_IDS: [i32; 2] = [1, 2];
+
+/// «Win+Alt+N» → (модификаторы, код клавиши). Клавиша: буква, цифра, F1–F24, стрелка, Space.
+fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN};
+    let (mut mods, mut vk) = (0u32, None);
+    for part in s.split('+').map(|p| p.trim().to_ascii_lowercase()) {
+        match part.as_str() {
+            "win" => mods |= MOD_WIN,
+            "ctrl" | "control" => mods |= MOD_CONTROL,
+            "alt" => mods |= MOD_ALT,
+            "shift" => mods |= MOD_SHIFT,
+            "left" => vk = Some(0x25),
+            "up" => vk = Some(0x26),
+            "right" => vk = Some(0x27),
+            "down" => vk = Some(0x28),
+            "space" => vk = Some(0x20),
+            k if k.len() == 1 && k.chars().all(|c| c.is_ascii_alphanumeric()) => vk = Some(k.to_ascii_uppercase().as_bytes()[0] as u32),
+            k if k.starts_with('f') => match k[1..].parse::<u32>() {
+                Ok(n @ 1..=24) => vk = Some(0x70 + n - 1),
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+    // без модификатора сочетание перехватило бы обычную клавишу во всех программах — не разрешаем
+    if mods == 0 {
+        return None;
+    }
+    vk.map(|v| (mods, v))
+}
+
 /// Последнее уведомление в трее — о падении (щелчок откроет отчёт, а не настройки).
 static CRASH_BALLOON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
@@ -2085,6 +2170,7 @@ fn main() {
             banned_favs: Vec::new(),
             upd: UpdState::Idle,
             upd_notified: String::new(),
+            hotkeys_ok: [false; 2],
         };
         if first_run {
             app.save_cfg();
@@ -2095,6 +2181,7 @@ fn main() {
         app.load_state();
         app.refresh_lists();
         app.tray(NIM_ADD, "Hora");
+        app.register_hotkeys();
         if crash::take_new() {
             log("в прошлый раз программа упала — предлагаем сообщить об ошибке");
             CRASH_BALLOON.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -2140,5 +2227,24 @@ fn main() {
                 DispatchMessageW(&msg);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_hotkey;
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN};
+
+    // разбор сочетаний горячих клавиш из config.ini
+    #[test]
+    fn hotkeys() {
+        assert_eq!(parse_hotkey("Win+Alt+N"), Some((MOD_WIN | MOD_ALT, b'N' as u32)));
+        assert_eq!(parse_hotkey(" ctrl + shift + f5 "), Some((MOD_CONTROL | MOD_SHIFT, 0x74)));
+        assert_eq!(parse_hotkey("Win+Right"), Some((MOD_WIN, 0x27)));
+        assert_eq!(parse_hotkey("Alt+7"), Some((MOD_ALT, b'7' as u32)));
+        assert_eq!(parse_hotkey("N"), None); // без модификатора — нельзя
+        assert_eq!(parse_hotkey("Win+Alt"), None); // нет клавиши
+        assert_eq!(parse_hotkey("Win+Ж"), None);
+        assert_eq!(parse_hotkey("Win+F25"), None);
     }
 }

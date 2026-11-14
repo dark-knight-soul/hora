@@ -41,6 +41,8 @@ pub struct Config {
     pub offset_x: i32,    // сдвиг в процентах ширины экрана
     pub offset_y: i32,    // сдвиг в процентах высоты экрана
     pub seconds: bool,
+    pub pixel_glow: bool,  // «Пиксельное табло»: мягкое свечение вокруг точек
+    pub blink_colon: bool, // «Пиксельное табло» и «Блочный пиксель»: двоеточие мигает раз в секунду
     pub lang: String,        // ru | en
     pub time_format: String, // auto | 24 | 12
     pub shadow: bool,
@@ -49,6 +51,9 @@ pub struct Config {
     pub ui_theme: String, // тема окна настроек: auto | light | dark
     pub ui_lang: String,  // язык окна и меню: auto (как в Windows) | ru | en
     pub update_check: bool, // раз в день проверять, нет ли новой версии
+    pub hotkeys: bool,       // глобальные горячие клавиши
+    pub hotkey_next: String, // следующие обои, например Win+Alt+N
+    pub hotkey_fav: String,  // текущие обои — в избранное
     /// Не настройка, а подсказка при рисовании: фон под текстом пёстрый — нужен плотный ореол.
     pub halo: bool,
     // --- погода ---
@@ -106,6 +111,8 @@ impl Default for Config {
             offset_x: 0,
             offset_y: -4,
             seconds: false,
+            pixel_glow: true,
+            blink_colon: false,
             lang: if crate::i18n::system_ru() { "ru".into() } else { "en".into() },
             time_format: "auto".into(),
             shadow: true,
@@ -114,6 +121,9 @@ impl Default for Config {
             ui_theme: "auto".into(),
             ui_lang: "auto".into(),
             update_check: true,
+            hotkeys: true,
+            hotkey_next: "Win+Alt+N".into(),
+            hotkey_fav: "Win+Alt+F".into(),
             halo: false,
             weather: true,
             weather_city: String::new(),
@@ -270,6 +280,11 @@ impl Config {
                 "offset_x" => c.offset_x = v.parse::<i32>().unwrap_or(c.offset_x).clamp(-100, 100),
                 "offset_y" => c.offset_y = v.parse::<i32>().unwrap_or(c.offset_y).clamp(-100, 100),
                 "seconds" => c.seconds = parse_bool(&v).unwrap_or(c.seconds),
+                "pixel_glow" => c.pixel_glow = parse_bool(&v).unwrap_or(c.pixel_glow),
+                "blink_colon" => c.blink_colon = parse_bool(&v).unwrap_or(c.blink_colon),
+                "hotkeys" => c.hotkeys = parse_bool(&v).unwrap_or(c.hotkeys),
+                "hotkey_next" => c.hotkey_next = v,
+                "hotkey_fav" => c.hotkey_fav = v,
                 "lang" => c.lang = v.to_lowercase(),
                 "time_format" => c.time_format = v.to_lowercase(),
                 "shadow" => c.shadow = parse_bool(&v).unwrap_or(c.shadow),
@@ -384,6 +399,10 @@ offset_x = {offset_x}
 offset_y = {offset_y}
 ; 1 = показывать секунды (перерисовка раз в секунду)
 seconds = {seconds}
+; «Пиксельное табло»: 1 = мягкое свечение вокруг точек
+pixel_glow = {pixel_glow}
+; «Пиксельное табло» и «Блочный пиксель»: 1 = двоеточие мигает (часы перерисовываются раз в секунду)
+blink_colon = {blink_colon}
 ; язык: ru | en
 lang = {lang}
 ; формат времени: auto | 24 | 12
@@ -402,6 +421,12 @@ ui_theme = {ui_theme}
 ui_lang = {ui_lang}
 ; 1 = раз в день проверять на GitHub, нет ли новой версии (обновление ставится только с верной подписью)
 update_check = {update_check}
+; горячие клавиши: 1 = включены. Сочетание — через «+»: Win, Ctrl, Alt, Shift и клавиша (буква, цифра, F1–F12)
+hotkeys = {hotkeys}
+; следующие обои
+hotkey_next = {hotkey_next}
+; текущие обои — в избранное (повторно — убрать)
+hotkey_fav = {hotkey_fav}
 
 [weather]
 ; 1 = показывать виджет погоды на рабочем столе (данные: open-meteo.com, без ключа)
@@ -470,6 +495,8 @@ video_rotate = {video_rotate}
             offset_x = self.offset_x,
             offset_y = self.offset_y,
             seconds = b(self.seconds),
+            pixel_glow = b(self.pixel_glow),
+            blink_colon = b(self.blink_colon),
             lang = self.lang,
             time_format = self.time_format,
             shadow = b(self.shadow),
@@ -478,6 +505,9 @@ video_rotate = {video_rotate}
             ui_theme = self.ui_theme,
             ui_lang = Self::clean(&self.ui_lang),
             update_check = b(self.update_check),
+            hotkeys = b(self.hotkeys),
+            hotkey_next = Self::clean(&self.hotkey_next),
+            hotkey_fav = Self::clean(&self.hotkey_fav),
             weather = b(self.weather),
             weather_city = Self::clean(&self.weather_city),
             weather_lat = self.weather_lat,
@@ -502,6 +532,17 @@ video_rotate = {video_rotate}
     /// Строки без управляющих символов — чтобы значение не «перетекло» на следующую строку файла.
     fn clean(s: &str) -> String {
         s.chars().filter(|c| !c.is_control()).collect()
+    }
+
+    /// Двоеточие сейчас мигает? Только в пиксельных стилях и только своим шрифтом (в нём есть
+    /// «пустое двоеточие» той же ширины — иначе цифры прыгали бы туда-сюда).
+    pub fn blinking(&self) -> bool {
+        self.blink_colon && matches!(self.style.as_str(), "pixel" | "block") && (self.font.is_empty() || self.font.eq_ignore_ascii_case("auto"))
+    }
+
+    /// Перерисовывать часы раз в секунду (секунды на экране или мигающее двоеточие).
+    pub fn every_second(&self) -> bool {
+        self.seconds || self.blinking()
     }
 
     pub fn is_24h(&self) -> bool {

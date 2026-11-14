@@ -26,6 +26,7 @@
 - ✨ **Live wallpapers** (optional): snow, rain, stars, falling leaves, fireflies or "match the weather" on top of your regular wallpaper — or **video instead of a picture**, including video wallpapers from the **Wallpaper Engine** Workshop.
 - ♥ **Favorites and a blacklist**: wallpapers you like come back from time to time, ones you don't are never shown again.
 - 🌅 **Topic schedule**: nature in the morning, sunsets in the evening, space at night.
+- ⌨️ **Hotkeys**: Win+Alt+N — next wallpaper, Win+Alt+F — add to favorites (change them in `config.ini`).
 - 🔄 **One-click updates**: Hora checks GitHub once a day and installs a new version only if its digital signature matches the author's key.
 - 🎞 **Wallpaper transitions**: fade, wipe, circle, blinds — the effects are done by Windows itself.
 

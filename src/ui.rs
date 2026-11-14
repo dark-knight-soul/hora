@@ -323,6 +323,7 @@ struct Snap {
     ban_count: usize,  // в чёрном списке
     cur_fav: bool,     // текущие обои в избранном
     can_undo: bool,    // есть что «вернуть» из последних скрытых
+    hotkeys_ok: [bool; 2], // горячие клавиши зарегистрированы
     weather: Option<weather::Weather>,
     weather_status: String,
     weather_busy: bool,
@@ -441,7 +442,8 @@ pub fn open() {
     unsafe {
         let existing = UI_HWND.with(|c| c.get());
         if !existing.is_null() {
-            ShowWindow(existing, SW_RESTORE);
+            // свёрнутое — вернуть как было (в том числе развёрнутым); открытое — просто вперёд
+            ShowWindow(existing, if IsIconic(existing) != 0 { SW_RESTORE } else { SW_SHOW });
             SetForegroundWindow(existing);
             return;
         }
@@ -516,7 +518,8 @@ pub fn open() {
         UI_HWND.with(|c| c.set(hwnd));
         create_edit(hwnd);
         resize_for_dpi(hwnd, dpi);
-        ShowWindow(hwnd, SW_SHOWNORMAL);
+        let maximized = restore_placement(hwnd, dpi);
+        ShowWindow(hwnd, if maximized { SW_SHOWMAXIMIZED } else { SW_SHOWNORMAL });
         SetForegroundWindow(hwnd);
         SetTimer(hwnd, T_REFRESH, 2000, None);
     }
@@ -625,6 +628,47 @@ struct EditPos {
     edit_rect: Option<RECT>,
 }
 
+/// Где окно настроек было в прошлый раз: cache\window.txt — «лево верх право низ развёрнуто dpi».
+fn placement_path() -> PathBuf {
+    util::app_dir().join("cache").join("window.txt")
+}
+
+/// Запомнить размер, место и «развёрнуто ли» окно настроек (при закрытии).
+unsafe fn save_placement(hwnd: HWND) {
+    let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
+    wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+    if GetWindowPlacement(hwnd, &mut wp) == 0 {
+        return;
+    }
+    let r = wp.rcNormalPosition;
+    let max = wp.showCmd == SW_SHOWMAXIMIZED as u32 || (IsIconic(hwnd) != 0 && wp.flags & WPF_RESTORETOMAXIMIZED != 0);
+    let dpi = windows_sys::Win32::UI::HiDpi::GetDpiForWindow(hwnd);
+    let _ = std::fs::write(placement_path(), format!("{} {} {} {} {} {}", r.left, r.top, r.right, r.bottom, max as u8, dpi));
+}
+
+/// Вернуть окно туда, где оно было. Только если тот экран на месте и масштаб тот же
+/// (иначе остаётся обычный размер по центру). Возвращает «было развёрнуто».
+unsafe fn restore_placement(hwnd: HWND, dpi: u32) -> bool {
+    let Ok(t) = std::fs::read_to_string(placement_path()) else { return false };
+    let v: Vec<i32> = t.split_whitespace().filter_map(|x| x.parse().ok()).collect();
+    if v.len() != 6 || v[5] as u32 != dpi {
+        return false;
+    }
+    let r = RECT { left: v[0], top: v[1], right: v[2], bottom: v[3] };
+    let (w, h) = (r.right - r.left, r.bottom - r.top);
+    // окно меньше минимума или почти целиком за пределами экранов — не восстанавливаем
+    let s = dpi as i32;
+    if w < 600 * s / 96 || h < 400 * s / 96 || MonitorFromRect(&r, MONITOR_DEFAULTTONULL).is_null() {
+        return false;
+    }
+    let mut wp: WINDOWPLACEMENT = std::mem::zeroed();
+    wp.length = std::mem::size_of::<WINDOWPLACEMENT>() as u32;
+    wp.showCmd = SW_HIDE as u32; // показываем позже обычным ShowWindow
+    wp.rcNormalPosition = r;
+    SetWindowPlacement(hwnd, &wp);
+    v[4] != 0
+}
+
 /// Ставит размер окна под DPI и центрирует его на основном мониторе.
 unsafe fn resize_for_dpi(hwnd: HWND, dpi: u32) {
     let s = dpi as f32 / 96.0;
@@ -682,6 +726,7 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 ban_count: a.banned.len(),
                 cur_fav: a.current_is_fav(),
                 can_undo: !a.last_banned.is_empty(),
+                hotkeys_ok: a.hotkeys_ok,
             });
             UI.with(|u| {
                 if let Some(st) = u.borrow_mut().as_mut() {
@@ -963,6 +1008,7 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
             0
         }
         WM_DESTROY => {
+            save_placement(hwnd);
             KillTimer(hwnd, T_REFRESH);
             end_drag(); // закрыли посреди перетаскивания ползунка — значение не теряем
             ANIM_RUN.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -1231,6 +1277,9 @@ unsafe fn click(hwnd: HWND, id: usize) {
         M_SECONDS => Some(a.cfg.seconds),
         M_H24 => Some(a.cfg.is_24h()),
         M_SHADOW => Some(a.cfg.shadow),
+        M_GLOW => Some(a.cfg.pixel_glow),
+        M_BLINK => Some(a.cfg.blink_colon),
+        M_HOTKEYS => Some(a.cfg.hotkeys),
         M_WEATHER_ON => Some(a.cfg.weather),
         M_SCHED_ON => Some(a.cfg.schedule),
         M_UPDATE_AUTO => Some(a.cfg.update_check),
@@ -2146,6 +2195,12 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                 y = c.toggle(x, y, w, tr("Показывать часы"), tr("Большие часы на рабочем столе, под иконками"), cfg.clock, M_CLOCK_ON);
                 let items: Vec<_> = STYLES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_STYLE + i, cfg.style == *v)).collect();
                 y = c.group(x, y, w, tr("Стиль"), "", &items);
+                if cfg.style == "pixel" {
+                    y = c.toggle(x, y, w, tr("Свечение точек"), tr("Мягкий ореол вокруг точек — как у настоящего табло"), cfg.pixel_glow, M_GLOW);
+                }
+                if cfg.style == "pixel" || cfg.style == "block" {
+                    y = c.toggle(x, y, w, tr("Мигающее двоеточие"), tr("Часы перерисовываются раз в секунду"), cfg.blink_colon, M_BLINK);
+                }
                 y = c.toggle(x, y, w, tr("Секунды"), tr("Часы обновляются раз в секунду вместо раза в минуту"), cfg.seconds, M_SECONDS);
                 y = c.toggle(x, y, w, tr("24-часовой формат"), "", cfg.is_24h(), M_H24);
                 y = c.toggle(x, y, w, tr("Тень под текстом"), tr("Помогает читать часы на светлых обоях"), cfg.shadow, M_SHADOW);
@@ -2395,6 +2450,14 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
             // ---------------- Прочее ----------------
             _ => {
                 y = c.toggle(x, y, w, tr("Запускать вместе с Windows"), tr("Hora будет стартовать сама при входе в систему"), sn.autostart, M_AUTOSTART);
+                // горячие клавиши: сочетания из config.ini; занятое другой программой — помечаем
+                let busy = |ok: bool| if !ok && sn.cfg.hotkeys { tr(" (занято)") } else { "" };
+                let hk = if crate::i18n::en() {
+                    format!("{}{} — next wallpaper · {}{} — add to favorites", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]))
+                } else {
+                    format!("{}{} — следующие обои · {}{} — в избранное", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]))
+                };
+                y = c.toggle(x, y, w, tr("Горячие клавиши"), &hk, sn.cfg.hotkeys, M_HOTKEYS);
                 let items: Vec<_> = UI_THEMES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_UI_THEME + i, sn.cfg.ui_theme == *v)).collect();
                 y = c.group(x, y, w, tr("Тема окна"), tr("«Как в Windows» — следует за светлым или тёмным режимом системы"), &items);
                 let langs: Vec<_> = UI_LANGS.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_UI_LANG + i, sn.cfg.ui_lang == *v)).collect();
