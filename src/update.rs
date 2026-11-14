@@ -44,6 +44,21 @@ fn parse_version(v: &str) -> Option<Vec<u32>> {
     parts.filter(|p| !p.is_empty() && p.len() <= 4)
 }
 
+/// Найденная версия могла устареть (проверка раз в сутки, а окно могли не закрывать днями):
+/// перед установкой ещё раз спрашиваем GitHub о самой последней и ставим её — иначе
+/// обновление шло бы по ступенькам 0.4 → 0.5 → 0.6. Нет связи — ставим найденную раньше.
+/// (Спрашиваем всегда настоящий releases/latest, без тестовой подмены HORA_UPDATE_API.)
+pub fn freshest(found: Release) -> Release {
+    let latest = crate::http::get_text(API_LATEST).ok().and_then(|json| release_from_json(&json));
+    match latest {
+        Some(l) if newer(&l.version, &found.version) && newer(&l.version, &current()) => {
+            crate::util::log(&format!("обновления: пока ждали, вышла {} — ставлю её вместо {}", l.version, found.version));
+            l
+        }
+        _ => found,
+    }
+}
+
 /// a новее b?
 pub fn newer(a: &str, b: &str) -> bool {
     match (parse_version(a), parse_version(b)) {
@@ -79,27 +94,41 @@ pub fn check() -> Result<Option<Release>, String> {
     // HORA_UPDATE_API — только для проверки обновления на тестовой копии (и только этот репозиторий)
     let api = std::env::var("HORA_UPDATE_API").ok().filter(|u| u.starts_with("https://api.github.com/repos/dark-knight-soul/hora/releases/")).unwrap_or_else(|| API_LATEST.to_string());
     let json = crate::http::get_text(&api)?;
-    let tag = json_values(&json, "tag_name").into_iter().next().ok_or_else(|| tr("не удалось прочитать ответ GitHub").to_string())?;
+    let version = release_version(&json)?;
+    if !newer(&version, &current()) {
+        return Ok(None);
+    }
+    release_files(&json, version).map(Some)
+}
+
+/// Версия выпуска из ответа GitHub.
+fn release_version(json: &str) -> Result<String, String> {
+    let tag = json_values(json, "tag_name").into_iter().next().ok_or_else(|| tr("не удалось прочитать ответ GitHub").to_string())?;
     let version = tag.trim_start_matches('v').to_string();
     if parse_version(&version).is_none() {
         return Err(tr("не удалось прочитать ответ GitHub").to_string());
     }
-    if !newer(&version, &current()) {
-        return Ok(None);
-    }
-    // ссылки на файлы — только из выпусков этого репозитория
-    let urls: Vec<String> = json_values(&json, "browser_download_url").into_iter().filter(|u| u.starts_with(DOWNLOAD_PREFIX)).collect();
+    Ok(version)
+}
+
+/// Ссылки на установщик и подпись — только из выпусков этого репозитория.
+fn release_files(json: &str, version: String) -> Result<Release, String> {
+    let urls: Vec<String> = json_values(json, "browser_download_url").into_iter().filter(|u| u.starts_with(DOWNLOAD_PREFIX)).collect();
     let exe_url = urls.iter().find(|u| u.ends_with(&format!("/{ASSET}"))).cloned();
     let sig_url = urls.iter().find(|u| u.ends_with(&format!("/{ASSET}.sig"))).cloned();
     match (exe_url, sig_url) {
-        (Some(exe_url), Some(sig_url)) => Ok(Some(Release {
+        (Some(exe_url), Some(sig_url)) => Ok(Release {
             page: format!("https://github.com/dark-knight-soul/hora/releases/tag/v{version}"),
             version,
             exe_url,
             sig_url,
-        })),
+        }),
         _ => Err(tr("в новом выпуске нет подписанного установщика").to_string()),
     }
+}
+
+fn release_from_json(json: &str) -> Option<Release> {
+    release_files(json, release_version(json).ok()?).ok()
 }
 
 /// Подпись файла сходится с открытым ключом выпусков?

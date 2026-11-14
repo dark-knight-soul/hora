@@ -851,6 +851,7 @@ impl App {
         self.upd = UpdState::Downloading(rel.version.clone());
         let hwnd = self.hwnd as usize;
         let ok = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
+            let rel = update::freshest(rel);
             let r = util::parcel_new(update::download(&rel));
             unsafe {
                 if PostMessageW(hwnd as HWND, WM_UPDATE_READY, 0, r) == 0 {
@@ -1870,17 +1871,21 @@ fn main() {
         }
         // проверка обновления целиком без окна: найти, скачать, проверить подпись, заменить себя
         Some("--update-selftest") => {
+            // как кнопка «Обновить»: найденную версию перед установкой перепроверяем (freshest)
             let code = match update::check() {
-                Ok(Some(r)) => match update::download(&r).and_then(|e| update::start(&e)) {
-                    Ok(()) => {
-                        log(&format!("обновление {}: скачано, подпись верна, замена запущена", r.version));
-                        0
+                Ok(Some(found)) => {
+                    let r = update::freshest(found);
+                    match update::download(&r).and_then(|e| update::start(&e)) {
+                        Ok(()) => {
+                            log(&format!("обновление {}: скачано, подпись верна, замена запущена", r.version));
+                            0
+                        }
+                        Err(e) => {
+                            log(&format!("обновление {}: {e}", r.version));
+                            2
+                        }
                     }
-                    Err(e) => {
-                        log(&format!("обновление {}: {e}", r.version));
-                        2
-                    }
-                },
+                }
                 Ok(None) => {
                     log("обновление: уже последняя версия");
                     1

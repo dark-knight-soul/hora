@@ -2,6 +2,10 @@
 
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
+## [Unreleased]
+### Fixed · Исправлено
+- Updating after a long time no longer goes step by step (0.4 → 0.5 → 0.6): right before installing, Hora asks GitHub again and installs the newest version. · Обновление больше не идёт по ступенькам: перед установкой Hora перепроверяет последнюю версию.
+
 ## [0.6.0] — 2026-11-14
 ### Added · Добавлено
 - Crash handling: the reason goes to `crash.txt`, Hora restarts itself once (not more often than every 2 minutes) and offers to report the error on GitHub with a prefilled form. Nothing is sent automatically. · Перехват падений: причина в `crash.txt`, один автоперезапуск, предложение сообщить об ошибке.
@@ -34,6 +38,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Added
 - First public release: wallpapers from Wallhaven or a folder, 12 clock styles, weather, favorites and blacklist, live wallpapers (effects and video, incl. Wallpaper Engine video), installer and portable version. · Первый публичный выпуск.
 
+[Unreleased]: https://github.com/dark-knight-soul/hora/compare/v0.6.0...HEAD
 [0.6.0]: https://github.com/dark-knight-soul/hora/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dark-knight-soul/hora/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/dark-knight-soul/hora/compare/v0.4.0...v0.5.0
