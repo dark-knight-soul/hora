@@ -35,6 +35,7 @@ const WM_BG_DONE: u32 = WM_APP + 3;
 const WM_OPEN_UI: u32 = WM_APP + 4;
 const WM_UPDATE_CHECKED: u32 = WM_APP + 6; // проверка обновлений закончилась
 const WM_UPDATE_READY: u32 = WM_APP + 7; // обновление скачано и проверено (или ошибка)
+const WM_MON_WALLS: u32 = WM_APP + 8; // фоновый поток узнал у Windows, какие обои на каком мониторе
 const WM_WEATHER_DONE: u32 = WM_APP + 5; // погода загружена (или ошибка) // открыть окно настроек (в том числе по просьбе второй копии программы)
 
 const T_CLOCK: usize = 1;
@@ -106,6 +107,8 @@ fn watch_desktop(host: HWND) {
 
 // мониторы, чей фон обновился, пока состояние программы было занято (передаём при повторной попытке)
 static BG_PENDING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+/// Готовый фон надо показать, даже если он не изменился (обои ставили заново после закрытого стола).
+static BG_FORCE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 const RUN_KEY: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const APP_NAME: &str = "Hora";
@@ -389,9 +392,35 @@ impl App {
         self.fav_names.contains(&wallpaper::key_of(p))
     }
 
-    /// Обои каждого монитора — заново у Windows (после смены обоев и при запуске).
-    fn update_mon_walls(&mut self) {
-        let win = wallpaper::on_monitors();
+    /// Узнать у Windows, какие обои на каком мониторе, — в фоновом потоке (COM к Explorer может
+    /// зависнуть вместе с ним); ответ придёт сообщением WM_MON_WALLS.
+    fn refresh_mon_walls(&self) {
+        // не больше одного запроса сразу и не чаще раза в 5 с (per_monitor зовётся при каждой перерисовке окна)
+        use std::sync::atomic::Ordering::SeqCst;
+        static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        static LAST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let now = unsafe { windows_sys::Win32::System::SystemInformation::GetTickCount64() };
+        if now.saturating_sub(LAST.load(SeqCst)) < 5000 || BUSY.swap(true, SeqCst) {
+            return;
+        }
+        LAST.store(now, SeqCst);
+        let hwnd = self.hwnd as usize;
+        let spawned = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
+            let p = util::parcel_new(wallpaper::on_monitors());
+            unsafe {
+                if PostMessageW(hwnd as HWND, WM_MON_WALLS, 0, p) == 0 {
+                    drop(util::parcel_take::<Vec<(Vec<u16>, RECT, Option<PathBuf>)>>(p));
+                }
+            }
+            BUSY.store(false, SeqCst);
+        });
+        if spawned.is_err() {
+            BUSY.store(false, SeqCst);
+        }
+    }
+
+    /// Обои каждого монитора по снимку Windows — в порядке clock::monitors (сопоставление по прямоугольнику).
+    fn set_mon_walls(&mut self, win: Vec<(Vec<u16>, RECT, Option<PathBuf>)>) {
         self.mon_walls = clock::monitors()
             .iter()
             .map(|m| {
@@ -402,8 +431,18 @@ impl App {
     }
 
     /// Разные обои на нескольких мониторах — тогда «в избранное» и «не нравится» спрашивают, какой экран.
+    /// Если экраны с тех пор поменялись (отключили монитор, вошли по RDP) — снимок устарел: считаем,
+    /// что выбора нет (действие — на все экраны), и просим свежий снимок.
     fn per_monitor(&self) -> bool {
-        self.cfg.wall_mode == "per_monitor" && self.mon_walls.iter().filter(|m| m.1.is_some()).count() > 1
+        if self.cfg.wall_mode != "per_monitor" || self.mon_walls.iter().filter(|m| m.1.is_some()).count() < 2 {
+            return false;
+        }
+        let now: Vec<RECT> = clock::monitors().iter().map(|m| m.rect).collect();
+        let same = now.len() == self.mon_walls.len() && now.iter().zip(&self.mon_walls).all(|(a, b)| util::same_rect(a, &b.0));
+        if !same {
+            self.refresh_mon_walls();
+        }
+        same
     }
 
     /// Номер монитора под курсором мыши (только когда обои на мониторах разные).
@@ -753,15 +792,26 @@ impl App {
         }
     }
 
-    fn change_done(&mut self, out: wallpaper::Outcome) {
+    fn change_done(&mut self, mut out: wallpaper::Outcome) {
         self.busy = false;
         unsafe { SetTimer(self.hwnd, T_AFTER_WP, 1500, None) };
         match out.paths.first() {
             Some(_) => {
+                self.set_mon_walls(std::mem::take(&mut out.walls));
                 if out.partial {
-                    // сменили только один монитор — что стоит на всех, спрашиваем у Windows
-                    self.update_mon_walls();
-                    let all: Vec<PathBuf> = self.mon_walls.iter().filter_map(|m| m.1.clone()).filter(|p| p.is_file()).collect();
+                    // сменили только один монитор: обои всех экранов — по данным Windows, но путь берём
+                    // тот, что знает программа (файл мог переехать из избранного в кэш, а Windows помнит старый)
+                    let mut known = self.current.clone();
+                    known.extend(out.paths.iter().cloned());
+                    let all: Vec<PathBuf> = self
+                        .mon_walls
+                        .iter()
+                        .filter_map(|m| m.1.clone())
+                        .map(|p| {
+                            let k = wallpaper::key_of(&p);
+                            known.iter().find(|c| wallpaper::key_of(c) == k).cloned().unwrap_or(p)
+                        })
+                        .collect();
                     self.current = if all.is_empty() { out.paths.clone() } else { all };
                 } else {
                     self.current = out.paths.clone();
@@ -789,7 +839,9 @@ impl App {
             }
         }
         // фон под часами — под новые обои; часы могли «потеряться», если Explorer пересоздал слой обоев
-        self.update_mon_walls();
+        if !out.walls.is_empty() {
+            self.set_mon_walls(std::mem::take(&mut out.walls));
+        }
         if !out.paths.is_empty() && self.cfg.wall_mode != "span" {
             self.covered_mask = covered_mask();
             if self.covered_mask != 0 {
@@ -820,18 +872,21 @@ impl App {
         let cache = self.cache.clone();
         let rects: Vec<RECT> = clock::monitors().iter().map(|m| m.rect).collect();
         let hwnd = self.hwnd as usize;
+        // «перерисовать в любом случае» относится именно к этой сборке (не к той, что шла раньше)
+        let force = std::mem::take(&mut self.bg_force);
         let spawned = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
             let changed = bg::build(&cache, &rects).unwrap_or(0);
-            unsafe { PostMessageW(hwnd as HWND, WM_BG_DONE, changed, 0) };
+            unsafe { PostMessageW(hwnd as HWND, WM_BG_DONE, changed, force as isize) };
         });
         if spawned.is_err() {
             self.bg_busy = false;
+            self.bg_force = force;
         }
     }
 
-    fn bg_done(&mut self, mask: usize) {
+    fn bg_done(&mut self, mask: usize, force: bool) {
         self.bg_busy = false;
-        if std::mem::take(&mut self.bg_force) {
+        if force {
             self.clock.bg_updated(usize::MAX, None); // без анимации — просто свежая картинка
         }
         if mask != 0 {
@@ -1012,6 +1067,9 @@ impl App {
         let c = self.cfg.clone();
         if c.ui_lang != old.ui_lang {
             i18n::set_lang(&c.ui_lang); // окно и меню сразу на новом языке (окно перерисуется ниже)
+        }
+        if c.wall_mode != old.wall_mode {
+            self.refresh_mon_walls();
         }
         if c.hotkeys != old.hotkeys || c.hotkey_next != old.hotkey_next || c.hotkey_fav != old.hotkey_fav || c.hotkey_open != old.hotkey_open || c.hotkey_ban != old.hotkey_ban {
             self.register_hotkeys();
@@ -1471,6 +1529,9 @@ fn ban_wallpapers(a: &mut App, targets: Vec<PathBuf>, only: Option<Vec<u16>>) {
             return;
         }
     };
+    if keys.iter().all(|k| list.contains(k)) {
+        return; // уже скрыты (например, нажали дважды, пока подбираются новые)
+    }
     for k in &keys {
         if !list.contains(k) {
             list.push(k.clone());
@@ -1540,7 +1601,10 @@ fn on_menu(a: &mut App, id: usize) -> After {
         x if (M_BAN_MON..M_BAN_MON + 10).contains(&x) => {
             let i = x - M_BAN_MON;
             let t = a.targets_on(i);
-            let only = a.mon_walls.get(i).map(|m| m.2.clone()).filter(|id| !id.is_empty());
+            let key = t.first().map(|p| wallpaper::key_of(p)).unwrap_or_default();
+            let elsewhere = a.mon_walls.iter().enumerate().any(|(j, m)| j != i && m.1.as_ref().map(|p| wallpaper::key_of(p) == key).unwrap_or(false));
+            // та же картинка стоит и на другом мониторе — меняем все, иначе там останется скрытая
+            let only = if elsewhere { None } else { a.mon_walls.get(i).map(|m| m.2.clone()).filter(|id| !id.is_empty()) };
             ban_wallpapers(a, t, only);
             return After::Nothing;
         }
@@ -1792,7 +1856,7 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 return 0;
             }
             // «в избранное» и «не нравится» — для обоев того монитора, где сейчас курсор мыши
-            let under = with_app(|a| a.monitor_under_cursor()).flatten();
+            let under = with_app(|a| a.monitor_under_cursor()).flatten().filter(|i| *i < 10);
             let id = if wp as i32 == HOTKEY_IDS[0] {
                 M_NEXT
             } else if wp as i32 == HOTKEY_IDS[1] {
@@ -1845,6 +1909,14 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             }
             0
         }
+        WM_MON_WALLS => {
+            if let Some(win) = util::parcel_take::<Vec<(Vec<u16>, RECT, Option<PathBuf>)>>(lp) {
+                if with_app(|a| a.set_mon_walls(win)).is_some() {
+                    ui::refresh();
+                }
+            }
+            0
+        }
         WM_WP_DONE => {
             match util::parcel_take::<wallpaper::Outcome>(lp) {
                 Some(out) => *WP_PENDING.lock().unwrap() = Some(out),
@@ -1889,14 +1961,20 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 }
                 T_UNCOVER => {
                     // монитор, закрытый окнами во время смены обоев, снова виден — обновляем обои и фон
-                    let now = covered_mask();
-                    let opened = a.covered_mask & !now;
-                    if opened != 0 {
-                        a.covered_mask &= now;
-                        log("рабочий стол снова виден после смены обоев — обновляю обои и фон под часами");
-                        std::thread::spawn(wallpaper::reapply);
-                        a.bg_force = true;
-                        SetTimer(hwnd, T_BG, 1500, None);
+                    SetTimer(hwnd, T_UNCOVER, 2000, None); // шаг 2 с (повтор при занятом состоянии ставит 200 мс)
+                    if a.cfg.wall_mode == "span" || matches!(a.live_mode, live::Mode::Video(_)) {
+                        a.covered_mask = 0;
+                    } else if !a.busy {
+                        // во время подбора ничего не делаем: change_done сам пересчитает, что закрыто
+                        let now = covered_mask();
+                        let opened = a.covered_mask & !now;
+                        if opened != 0 {
+                            a.covered_mask &= now;
+                            log("рабочий стол снова виден после смены обоев — обновляю обои и фон под часами");
+                            let _ = std::thread::Builder::new().stack_size(256 * 1024).spawn(wallpaper::reapply);
+                            a.bg_force = true;
+                            SetTimer(hwnd, T_BG, 1500, None);
+                        }
                     }
                     if a.covered_mask == 0 {
                         KillTimer(hwnd, T_UNCOVER);
@@ -1904,13 +1982,14 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 }
                 T_RECHANGE => {
                     KillTimer(hwnd, T_RECHANGE);
-                    with_app(|a| {
-                        if a.busy {
-                            a.change_again = true; // идёт подбор по старым настройкам — повторим после него
-                        } else {
-                            a.start_change();
-                        }
-                    });
+                    // (мы уже внутри with_app — второй with_app здесь вернул бы None и ничего бы не сделал)
+                    if a.cfg.live == "video" {
+                        // за эти 1,2 с включили видео — картинки не меняем, видео не трогаем
+                    } else if a.busy {
+                        a.change_again = true; // идёт подбор по старым настройкам — повторим после него
+                    } else {
+                        a.start_change();
+                    }
                 }
                 T_UPD_RETRY => {
                     KillTimer(hwnd, T_UPD_RETRY);
@@ -1951,6 +2030,7 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                     // [9] системное событие пришло, когда программа была занята, — доделываем
                     KillTimer(hwnd, T_SYS_RETRY);
                     a.request_bg();
+                    a.refresh_mon_walls();
                     a.tick_clock();
                 }
                 T_RELOAD => {
@@ -2022,9 +2102,14 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         }
         WM_BG_DONE => {
             BG_PENDING.fetch_or(wp, std::sync::atomic::Ordering::Relaxed);
+            if lp != 0 {
+                BG_FORCE.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
             let mask = BG_PENDING.load(std::sync::atomic::Ordering::Relaxed);
-            if with_app(|a| a.bg_done(mask)).is_some() {
+            let force = BG_FORCE.load(std::sync::atomic::Ordering::Relaxed);
+            if with_app(|a| a.bg_done(mask, force)).is_some() {
                 BG_PENDING.fetch_and(!mask, std::sync::atomic::Ordering::Relaxed);
+                BG_FORCE.store(false, std::sync::atomic::Ordering::Relaxed);
             } else {
                 SetTimer(hwnd, T_BG_RETRY, 200, None);
             }
@@ -2033,6 +2118,7 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
         WM_DISPLAYCHANGE | WM_DPICHANGED => {
             if with_app(|a| {
                 a.request_bg();
+                a.refresh_mon_walls();
                 a.tick_clock();
             })
             .is_none()
@@ -2052,6 +2138,7 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 if with_app(|a| {
                     if what == SPI_SETDESKWALLPAPER {
                         a.request_bg();
+                        a.refresh_mon_walls();
                     }
                     a.tick_clock();
                 })
@@ -2409,7 +2496,7 @@ fn main() {
         let _ = std::fs::create_dir_all(app.folder());
         app.load_state();
         app.refresh_lists();
-        app.update_mon_walls();
+        app.refresh_mon_walls();
         app.tray(NIM_ADD, "Hora");
         app.register_hotkeys();
         if crash::take_new() {

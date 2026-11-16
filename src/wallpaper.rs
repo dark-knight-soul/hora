@@ -156,12 +156,19 @@ pub struct Outcome {
     pub paths: Vec<PathBuf>, // поставленные обои (по одной на монитор или одна на все)
     pub error: Option<String>,
     pub partial: bool, // меняли обои только на одном мониторе — остальные остались прежними
+    /// Что после смены стоит на каждом мониторе (по данным Windows) — главному потоку не нужно
+    /// самому обращаться к Explorer по COM (если Explorer завис, завис бы и он).
+    pub walls: Vec<(Vec<u16>, windows_sys::Win32::Foundation::RECT, Option<PathBuf>)>,
 }
 
 /// Поставить заново те же обои на каждый монитор: Explorer перерисует рабочий стол.
 /// Нужно, когда обои сменились, пока стол был закрыт развёрнутыми окнами, — после сворачивания
 /// окон Windows иногда показывает прежнюю картинку.
 pub fn reapply() {
+    // смена обоев в другом потоке ещё идёт — не трогаем (иначе можно вернуть прежнюю картинку)
+    if CHANGING.load(std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
     let _com = ComGuard::new();
     let Some(d) = DesktopWallpaper::new() else { return };
     for (id, _) in d.monitors() {
@@ -195,9 +202,20 @@ enum Src {
 
 /// Главная функция потока: подобрать картинки и поставить их на рабочий стол
 /// (одну на все мониторы или, в режиме «разные обои», свою на каждый).
+/// Идёт смена обоев (поток wallpaper::change) — reapply в это время ничего не делает.
+static CHANGING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 /// only — сменить обои только на этом мониторе (идентификатор из on_monitors), остальные не трогать.
 pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32), only: Option<&[u16]>) -> Outcome {
     let _com = ComGuard::new();
+    CHANGING.store(true, std::sync::atomic::Ordering::SeqCst);
+    struct Done;
+    impl Drop for Done {
+        fn drop(&mut self) {
+            CHANGING.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+    let _done = Done;
     let mut rng = Rng::new();
     let dw = DesktopWallpaper::new();
     let mons = dw.as_ref().map(|d| d.monitors()).unwrap_or_default();
@@ -205,6 +223,8 @@ pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32
     let span = cfg.wall_mode == "span" && mons.len() > 1;
     // цели: (монитор или все, размер экрана для подбора картинки)
     let per_monitor = cfg.wall_mode == "per_monitor" && mons.len() > 1;
+    // монитор, для которого просили смену, мог пропасть (отключили, вошли по RDP) — тогда меняем все
+    let only = only.filter(|o| mons.iter().any(|(id, _)| id.as_slice() == *o));
     let partial = per_monitor && only.is_some();
     let targets: Vec<(Option<Vec<u16>>, (i32, i32))> = if per_monitor {
         mons.iter()
@@ -248,7 +268,19 @@ pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32
         prune_cache(&dirs.cache, cfg.cache_keep as usize, &keep);
     }
     let error = if errors.is_empty() { None } else { Some(errors.join("; ")) };
-    Outcome { paths: got, error, partial }
+    let walls = dw
+        .as_ref()
+        .map(|d| {
+            d.monitors()
+                .into_iter()
+                .map(|(id, r)| {
+                    let p = d.wallpaper_of(&id);
+                    (id, r, p)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Outcome { paths: got, error, partial, walls }
 }
 
 /// Подбирает одну картинку: из выбранного источника, при неудаче — из запасных.

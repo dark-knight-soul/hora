@@ -3,8 +3,13 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.8.0] — 2026-11-16
 ### Fixed · Исправлено
+- After picking categories, the new wallpaper actually comes (the delayed re-pick never ran). · Подбор после смены категорий снова работает.
+- Per-monitor favorites/hide use a fresh picture of which wallpaper is on which screen (after monitors change or RDP), and hiding a picture shown on two screens changes both. Explorer is no longer queried from the main thread. · Мониторы: свежие данные, Explorer не тормозит часы.
 - If the wallpaper changed while the desktop was covered by maximized windows, the old picture could stay visible after minimizing them. Now Hora re-applies the wallpaper and refreshes the clock background as soon as the desktop is visible again. · Старые обои после сворачивания развёрнутых окон.
+- Leftovers of an installed update are also cleaned up during the daily update check, not only at the next start. · Остатки обновления убираются и при ежедневной проверке.
 
 ### Added · Добавлено
 - Several monitors with different wallpapers: "Add to favorites" and "Don't show again" ask which screen (tray menu), the settings window has ♥ and 🚫 buttons on each monitor's thumbnail, and the hotkeys act on the monitor under the mouse. Hiding a wallpaper changes only that monitor. · Избранное и «не показывать» для каждого монитора отдельно.
@@ -13,9 +18,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 
 ### Changed · Изменено
 - Clicking several categories in a row starts one wallpaper pick after you stop (1.2 s), not one per click. If a category has nothing new, Hora tries another selected one before the fallback. · Один подбор после серии щелчков; при пустой категории — другая.
-
-### Fixed · Исправлено
-- Leftovers of an installed update are also cleaned up during the daily update check, not only at the next start. · Остатки обновления убираются и при ежедневной проверке.
 
 ## [0.7.0] — 2026-11-14
 ### Added · Добавлено
@@ -76,7 +78,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follo
 ### Added
 - First public release: wallpapers from Wallhaven or a folder, 12 clock styles, weather, favorites and blacklist, live wallpapers (effects and video, incl. Wallpaper Engine video), installer and portable version. · Первый публичный выпуск.
 
-[Unreleased]: https://github.com/dark-knight-soul/hora/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/dark-knight-soul/hora/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/dark-knight-soul/hora/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/dark-knight-soul/hora/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/dark-knight-soul/hora/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/dark-knight-soul/hora/compare/v0.5.0...v0.5.1
