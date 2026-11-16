@@ -3,6 +3,9 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Fixed · Исправлено
+- If the wallpaper changed while the desktop was covered by maximized windows, the old picture could stay visible after minimizing them. Now Hora re-applies the wallpaper and refreshes the clock background as soon as the desktop is visible again. · Старые обои после сворачивания развёрнутых окон.
+
 ### Added · Добавлено
 - Several monitors with different wallpapers: "Add to favorites" and "Don't show again" ask which screen (tray menu), the settings window has ♥ and 🚫 buttons on each monitor's thumbnail, and the hotkeys act on the monitor under the mouse. Hiding a wallpaper changes only that monitor. · Избранное и «не показывать» для каждого монитора отдельно.
 - Hotkey **Win+Alt+X** — don't show this wallpaper again (`hotkey_ban`). · Горячая клавиша «не показывать».

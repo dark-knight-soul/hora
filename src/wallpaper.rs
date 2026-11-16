@@ -158,6 +158,19 @@ pub struct Outcome {
     pub partial: bool, // меняли обои только на одном мониторе — остальные остались прежними
 }
 
+/// Поставить заново те же обои на каждый монитор: Explorer перерисует рабочий стол.
+/// Нужно, когда обои сменились, пока стол был закрыт развёрнутыми окнами, — после сворачивания
+/// окон Windows иногда показывает прежнюю картинку.
+pub fn reapply() {
+    let _com = ComGuard::new();
+    let Some(d) = DesktopWallpaper::new() else { return };
+    for (id, _) in d.monitors() {
+        if let Some(p) = d.wallpaper_of(&id).filter(|p| p.is_file()) {
+            d.set_wallpaper(Some(&id), &p);
+        }
+    }
+}
+
 /// Что сейчас стоит на каждом мониторе — по данным самой Windows:
 /// (идентификатор монитора, прямоугольник, файл обоев).
 pub fn on_monitors() -> Vec<(Vec<u16>, windows_sys::Win32::Foundation::RECT, Option<PathBuf>)> {

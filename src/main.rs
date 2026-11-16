@@ -51,6 +51,7 @@ static WEATHER_PENDING: std::sync::Mutex<Option<(f64, f64, Result<weather::Weath
 // результат смены обоев ждёт здесь, если в момент прихода состояние программы было занято
 static WP_PENDING: std::sync::Mutex<Option<wallpaper::Outcome>> = std::sync::Mutex::new(None);
 const T_WP_RETRY: usize = 9;
+const T_UNCOVER: usize = 17; // обои сменились за закрытым столом — ждём, когда его снова будет видно
 const T_RECHANGE: usize = 16; // категории меняют щелчками подряд — подбираем, когда щёлкать перестали
 const T_UPD_RETRY: usize = 15; // результат проверки/скачивания обновления ждёт свободного состояния
 static UPD_CHECKED: std::sync::Mutex<Option<(bool, Result<Option<update::Release>, String>)>> = std::sync::Mutex::new(None);
@@ -317,6 +318,8 @@ struct App {
     change_again: bool, // пока шёл подбор, поменяли категории — подобрать ещё раз по новым
     bg_busy: bool,
     bg_again: bool,
+    covered_mask: usize, // мониторы, закрытые окнами в момент смены обоев (бит на монитор)
+    bg_force: bool,      // следующий готовый фон — перерисовать окна часов, даже если он не изменился
     current: Vec<PathBuf>, // обои, стоящие сейчас (одни или по одним на монитор)
     last_change: u64,
     status: String,
@@ -787,6 +790,12 @@ impl App {
         }
         // фон под часами — под новые обои; часы могли «потеряться», если Explorer пересоздал слой обоев
         self.update_mon_walls();
+        if !out.paths.is_empty() && self.cfg.wall_mode != "span" {
+            self.covered_mask = covered_mask();
+            if self.covered_mask != 0 {
+                unsafe { SetTimer(self.hwnd, T_UNCOVER, 2000, None) };
+            }
+        }
         self.start_bg();
         self.tick_clock();
         unsafe { SetTimer(self.hwnd, T_TRIM, 3000, None) };
@@ -822,6 +831,9 @@ impl App {
 
     fn bg_done(&mut self, mask: usize) {
         self.bg_busy = false;
+        if std::mem::take(&mut self.bg_force) {
+            self.clock.bg_updated(usize::MAX, None); // без анимации — просто свежая картинка
+        }
         if mask != 0 {
             // поверх видео накладка со старой картинкой только мелькнула бы — без анимации
             let anim = if matches!(self.live_mode, live::Mode::Video(_)) { None } else { clock::Anim::from_cfg(&self.cfg.anim).map(|k| (k, self.cfg.anim_ms)) };
@@ -1875,6 +1887,21 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                     KillTimer(hwnd, T_WP_RETRY);
                     PostMessageW(hwnd, WM_WP_DONE, 0, 0);
                 }
+                T_UNCOVER => {
+                    // монитор, закрытый окнами во время смены обоев, снова виден — обновляем обои и фон
+                    let now = covered_mask();
+                    let opened = a.covered_mask & !now;
+                    if opened != 0 {
+                        a.covered_mask &= now;
+                        log("рабочий стол снова виден после смены обоев — обновляю обои и фон под часами");
+                        std::thread::spawn(wallpaper::reapply);
+                        a.bg_force = true;
+                        SetTimer(hwnd, T_BG, 1500, None);
+                    }
+                    if a.covered_mask == 0 {
+                        KillTimer(hwnd, T_UNCOVER);
+                    }
+                }
                 T_RECHANGE => {
                     KillTimer(hwnd, T_RECHANGE);
                     with_app(|a| {
@@ -2069,6 +2096,12 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
             DefWindowProcW(hwnd, msg, wp, lp)
         }
     }
+}
+
+/// Какие мониторы сейчас закрыты окнами (развёрнутыми или во весь экран) — бит на монитор.
+fn covered_mask() -> usize {
+    let mons: Vec<(isize, (i32, i32, i32, i32))> = clock::monitors().iter().map(|m| (0, (m.rect.left, m.rect.top, m.rect.right, m.rect.bottom))).collect();
+    live::covered_monitors(&mons).iter().enumerate().filter(|(_, c)| c.is_some()).fold(0, |m, (i, _)| m | (1 << i.min(31)))
 }
 
 /// «Монитор 2 · 1920×1080 (основной)»
@@ -2333,6 +2366,8 @@ fn main() {
             change_again: false,
             bg_busy: false,
             bg_again: false,
+            covered_mask: 0,
+            bg_force: false,
             current: Vec::new(),
             last_change: 0,
             status: String::new(),

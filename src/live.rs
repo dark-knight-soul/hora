@@ -1391,7 +1391,7 @@ fn on_battery() -> bool {
 
 /// Для каждого монитора: закрыт ли он почти целиком каким-то обычным окном
 /// (развёрнутым, на весь экран, игрой). Тогда рисовать там кадры незачем. Возвращает класс окна.
-fn covered_monitors(mons: &[(isize, (i32, i32, i32, i32))]) -> Vec<Option<String>> {
+pub(crate) fn covered_monitors(mons: &[(isize, (i32, i32, i32, i32))]) -> Vec<Option<String>> {
     use windows_sys::Win32::Foundation::{BOOL as SBOOL, HWND as SHWND, LPARAM, RECT as SRECT};
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
     struct Ctx<'a> {
