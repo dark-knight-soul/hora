@@ -323,7 +323,9 @@ struct Snap {
     ban_count: usize,  // в чёрном списке
     cur_fav: bool,     // текущие обои в избранном
     can_undo: bool,    // есть что «вернуть» из последних скрытых
-    hotkeys_ok: [bool; 3], // горячие клавиши зарегистрированы
+    hotkeys_ok: [bool; 4], // горячие клавиши зарегистрированы
+    mon_favs: Vec<bool>, // обои монитора в избранном (порядок clock::monitors)
+    per_mon: bool,       // разные обои на нескольких мониторах — кнопки на каждой миниатюре
     weather: Option<weather::Weather>,
     weather_status: String,
     weather_busy: bool,
@@ -727,6 +729,8 @@ unsafe extern "system" fn proc_(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) ->
                 cur_fav: a.current_is_fav(),
                 can_undo: !a.last_banned.is_empty(),
                 hotkeys_ok: a.hotkeys_ok,
+                mon_favs: a.mon_walls.iter().map(|m| m.1.as_ref().map(|p| a.is_fav(p)).unwrap_or(false)).collect(),
+                per_mon: a.per_monitor(),
             });
             UI.with(|u| {
                 if let Some(st) = u.borrow_mut().as_mut() {
@@ -2167,9 +2171,25 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                     list.push((ix, thumbs_y + (th - eh) / 2.0, ew, eh, mi));
                     ix += ew + p(8.0);
                 }
-                for (ix, iy, ew, eh, mi) in list {
+                for &(ix, iy, ew, eh, mi) in &list {
                     if let Some(img) = get_thumb(&mut st.thumbs, &sn.cache, mi, ew as i32, eh as i32) {
                         c.image(img, ix, iy, ew, eh, p(12.0));
+                    }
+                }
+                // разные обои на мониторах — на каждой миниатюре свои ♥ и «не показывать»
+                if sn.per_mon {
+                    for &(ix, iy, ew, eh, mi) in &list {
+                        let r = p(15.0);
+                        let cy = iy + eh - r - p(8.0);
+                        let ban_x = ix + ew - r - p(8.0);
+                        let fav_x = ban_x - r * 2.0 - p(6.0);
+                        let fav = sn.mon_favs.get(mi).copied().unwrap_or(false);
+                        for (cx, id, ic) in [(fav_x, M_FAV_MON + mi, if fav { Ic::HeartFull } else { Ic::Heart }), (ban_x, M_BAN_MON + mi, Ic::Ban)] {
+                            let bg = mix_argb(0xB014_161C, 0xE014_161C, c.hv(id));
+                            c.circle(cx, cy, r, bg);
+                            c.icon(ic, cx - p(9.0), cy - p(9.0), p(18.0), 0xFFFF_FFFF, bg);
+                            c.hit(cx - r, cy - r, r * 2.0, r * 2.0, id);
+                        }
                     }
                 }
             }
@@ -2474,9 +2494,9 @@ unsafe fn paint_inner(st: &mut State, hdc: HDC, snap: Option<&Snap>) {
                 // горячие клавиши: сочетания из config.ini; занятое другой программой — помечаем
                 let busy = |ok: bool| if !ok && sn.cfg.hotkeys { tr(" (занято)") } else { "" };
                 let hk = if crate::i18n::en() {
-                    format!("{}{} — next wallpaper · {}{} — favorites · {}{} — this window", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]), sn.cfg.hotkey_open, busy(sn.hotkeys_ok[2]))
+                    format!("{}{} — next · {}{} — favorites · {}{} — hide · {}{} — this window", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]), sn.cfg.hotkey_ban, busy(sn.hotkeys_ok[3]), sn.cfg.hotkey_open, busy(sn.hotkeys_ok[2]))
                 } else {
-                    format!("{}{} — следующие обои · {}{} — в избранное · {}{} — это окно", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]), sn.cfg.hotkey_open, busy(sn.hotkeys_ok[2]))
+                    format!("{}{} — следующие · {}{} — в избранное · {}{} — не показывать · {}{} — это окно", sn.cfg.hotkey_next, busy(sn.hotkeys_ok[0]), sn.cfg.hotkey_fav, busy(sn.hotkeys_ok[1]), sn.cfg.hotkey_ban, busy(sn.hotkeys_ok[3]), sn.cfg.hotkey_open, busy(sn.hotkeys_ok[2]))
                 };
                 y = c.toggle(x, y, w, tr("Горячие клавиши"), &hk, sn.cfg.hotkeys, M_HOTKEYS);
                 let items: Vec<_> = UI_THEMES.iter().enumerate().map(|(i, (v, t))| (tr(t).to_string(), M_UI_THEME + i, sn.cfg.ui_theme == *v)).collect();

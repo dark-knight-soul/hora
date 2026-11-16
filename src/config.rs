@@ -55,6 +55,7 @@ pub struct Config {
     pub hotkey_next: String, // следующие обои, например Win+Alt+N
     pub hotkey_fav: String,  // текущие обои — в избранное
     pub hotkey_open: String, // открыть окно настроек
+    pub hotkey_ban: String,  // «больше не показывать» обои под курсором
     /// Не настройка, а подсказка при рисовании: фон под текстом пёстрый — нужен плотный ореол.
     pub halo: bool,
     // --- погода ---
@@ -126,6 +127,7 @@ impl Default for Config {
             hotkey_next: "Win+Alt+N".into(),
             hotkey_fav: "Win+Alt+H".into(), // H — «сердечко» (Win+Alt+F часто занято)
             hotkey_open: "Win+Alt+O".into(), // O — open
+            hotkey_ban: "Win+Alt+X".into(),  // X — убрать
             halo: false,
             weather: true,
             weather_city: String::new(),
@@ -288,6 +290,7 @@ impl Config {
                 "hotkey_next" => c.hotkey_next = v,
                 "hotkey_fav" => c.hotkey_fav = v,
                 "hotkey_open" => c.hotkey_open = v,
+                "hotkey_ban" => c.hotkey_ban = v,
                 "lang" => c.lang = v.to_lowercase(),
                 "time_format" => c.time_format = v.to_lowercase(),
                 "shadow" => c.shadow = parse_bool(&v).unwrap_or(c.shadow),
@@ -430,10 +433,12 @@ update_check = {update_check}
 hotkeys = {hotkeys}
 ; следующие обои
 hotkey_next = {hotkey_next}
-; текущие обои — в избранное (повторно — убрать)
+; текущие обои — в избранное (повторно — убрать); на нескольких мониторах — того, где курсор мыши
 hotkey_fav = {hotkey_fav}
 ; открыть окно настроек
 hotkey_open = {hotkey_open}
+; больше не показывать обои (на нескольких мониторах — того, где курсор мыши)
+hotkey_ban = {hotkey_ban}
 
 [weather]
 ; 1 = показывать виджет погоды на рабочем столе (данные: open-meteo.com, без ключа)
@@ -516,6 +521,7 @@ video_rotate = {video_rotate}
             hotkey_next = Self::clean(&self.hotkey_next),
             hotkey_fav = Self::clean(&self.hotkey_fav),
             hotkey_open = Self::clean(&self.hotkey_open),
+            hotkey_ban = Self::clean(&self.hotkey_ban),
             weather = b(self.weather),
             weather_city = Self::clean(&self.weather_city),
             weather_lat = self.weather_lat,

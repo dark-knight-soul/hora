@@ -155,6 +155,21 @@ pub fn save_blacklist(path: &Path, list: &[String]) -> std::io::Result<()> {
 pub struct Outcome {
     pub paths: Vec<PathBuf>, // поставленные обои (по одной на монитор или одна на все)
     pub error: Option<String>,
+    pub partial: bool, // меняли обои только на одном мониторе — остальные остались прежними
+}
+
+/// Что сейчас стоит на каждом мониторе — по данным самой Windows:
+/// (идентификатор монитора, прямоугольник, файл обоев).
+pub fn on_monitors() -> Vec<(Vec<u16>, windows_sys::Win32::Foundation::RECT, Option<PathBuf>)> {
+    let _com = ComGuard::new();
+    let Some(d) = DesktopWallpaper::new() else { return Vec::new() };
+    d.monitors()
+        .into_iter()
+        .map(|(id, r)| {
+            let p = d.wallpaper_of(&id);
+            (id, r, p)
+        })
+        .collect()
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -167,7 +182,8 @@ enum Src {
 
 /// Главная функция потока: подобрать картинки и поставить их на рабочий стол
 /// (одну на все мониторы или, в режиме «разные обои», свою на каждый).
-pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32)) -> Outcome {
+/// only — сменить обои только на этом мониторе (идентификатор из on_monitors), остальные не трогать.
+pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32), only: Option<&[u16]>) -> Outcome {
     let _com = ComGuard::new();
     let mut rng = Rng::new();
     let dw = DesktopWallpaper::new();
@@ -175,8 +191,13 @@ pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32
     // единые обои: одна картинка на весь рабочий стол (все мониторы вместе)
     let span = cfg.wall_mode == "span" && mons.len() > 1;
     // цели: (монитор или все, размер экрана для подбора картинки)
-    let targets: Vec<(Option<Vec<u16>>, (i32, i32))> = if cfg.wall_mode == "per_monitor" && mons.len() > 1 {
-        mons.iter().map(|(id, r)| (Some(id.clone()), (r.right - r.left, r.bottom - r.top))).collect()
+    let per_monitor = cfg.wall_mode == "per_monitor" && mons.len() > 1;
+    let partial = per_monitor && only.is_some();
+    let targets: Vec<(Option<Vec<u16>>, (i32, i32))> = if per_monitor {
+        mons.iter()
+            .filter(|(id, _)| only.map(|o| id.as_slice() == o).unwrap_or(true))
+            .map(|(id, r)| (Some(id.clone()), (r.right - r.left, r.bottom - r.top)))
+            .collect()
     } else if span {
         let (l, t, r, b) = mons.iter().fold((i32::MAX, i32::MAX, i32::MIN, i32::MIN), |a, (_, m)| (a.0.min(m.left), a.1.min(m.top), a.2.max(m.right), a.3.max(m.bottom)));
         vec![(None, (r - l, b - t))]
@@ -214,7 +235,7 @@ pub fn change(cfg: &Config, dirs: &Dirs, current: &[PathBuf], primary: (i32, i32
         prune_cache(&dirs.cache, cfg.cache_keep as usize, &keep);
     }
     let error = if errors.is_empty() { None } else { Some(errors.join("; ")) };
-    Outcome { paths: got, error }
+    Outcome { paths: got, error, partial }
 }
 
 /// Подбирает одну картинку: из выбранного источника, при неудаче — из запасных.
@@ -356,7 +377,32 @@ fn json_number(json: &str, key: &str) -> Option<usize> {
 
 /// Подбирает и скачивает картинку с Wallhaven. `wide` — для единых обоев на несколько экранов:
 /// сначала ищем сверхширокие картинки, если их нет — просто с большим разрешением.
+/// Картинка с Wallhaven. Категорий выбрано несколько — если в одной нет ничего нового,
+/// пробуем другую (до трёх), и только потом запасной путь. Ошибку сети не повторяем.
 pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool, rng: &mut Rng) -> Result<PathBuf, String> {
+    let mut topics = selected_topics(&cfg.topics);
+    if topics.is_empty() {
+        return wallhaven_one(cfg, dirs, screen, wide, rng, None);
+    }
+    for i in (1..topics.len()).rev() {
+        let j = rng.below(i + 1);
+        topics.swap(i, j);
+    }
+    let nothing = [tr("на Wallhaven не нашлось новых картинок (все уже были)"), tr("Wallhaven ничего не нашёл по этим настройкам")];
+    let mut last = String::new();
+    for t in topics.into_iter().take(3) {
+        match wallhaven_one(cfg, dirs, screen, wide, rng, Some(t)) {
+            Ok(p) => return Ok(p),
+            Err(e) if nothing.contains(&e.as_str()) => last = e,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last)
+}
+
+type Topic = (&'static str, &'static str, &'static str, &'static str);
+
+fn wallhaven_one(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool, rng: &mut Rng, chosen: Option<&'static Topic>) -> Result<PathBuf, String> {
     let auto_atleast = cfg.atleast.eq_ignore_ascii_case("auto") || cfg.atleast.is_empty();
     // варианты (минимальное разрешение, пропорции) — пробуем по очереди
     let variants: Vec<(String, String)> = if wide {
@@ -371,15 +417,14 @@ pub fn from_wallhaven(cfg: &Config, dirs: &Dirs, screen: (i32, i32), wide: bool,
         vec![(atleast, ratios)]
     };
     let random = cfg.sorting == "random";
-    // категория: случайная из выбранных; иначе — свой запрос из настроек
-    let topics = selected_topics(&cfg.topics);
-    let (query, categories, top_range, topic) = if topics.is_empty() {
-        (cfg.query.trim().to_string(), cfg.categories.clone(), cfg.top_range.clone(), "")
-    } else {
-        let t = topics[rng.below(topics.len())];
-        // в узкой категории за месяц бывает всего несколько картинок — берём популярное за год
-        let range = if cfg.top_range == "1M" { "1y".to_string() } else { cfg.top_range.clone() };
-        (topic_query(t), t.3.to_string(), range, t.0)
+    // категория (выбрал from_wallhaven); без категорий — свой запрос из настроек
+    let (query, categories, top_range, topic) = match chosen {
+        None => (cfg.query.trim().to_string(), cfg.categories.clone(), cfg.top_range.clone(), ""),
+        Some(t) => {
+            // в узкой категории за месяц бывает всего несколько картинок — берём популярное за год
+            let range = if cfg.top_range == "1M" { "1y".to_string() } else { cfg.top_range.clone() };
+            (topic_query(t), t.3.to_string(), range, t.0)
+        }
     };
     let mut all_seen = false;
     for (atleast, ratios) in variants {

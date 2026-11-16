@@ -309,6 +309,8 @@ const PAIRS: &[(&str, &str)] = &[
     ("Все настройки", "All settings"),
     ("Журнал", "Log"),
     ("Сообщить о проблеме", "Report a problem"),
+    ("Все экраны", "All screens"),
+    ("Больше не показывать", "Don't show again"),
     ("ASCII-арт", "ASCII art"),
     ("Пиксель-арт", "Pixel art"),
     ("Киберпанк", "Cyberpunk"),

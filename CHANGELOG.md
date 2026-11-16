@@ -3,6 +3,14 @@
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
+### Added · Добавлено
+- Several monitors with different wallpapers: "Add to favorites" and "Don't show again" ask which screen (tray menu), the settings window has ♥ and 🚫 buttons on each monitor's thumbnail, and the hotkeys act on the monitor under the mouse. Hiding a wallpaper changes only that monitor. · Избранное и «не показывать» для каждого монитора отдельно.
+- Hotkey **Win+Alt+X** — don't show this wallpaper again (`hotkey_ban`). · Горячая клавиша «не показывать».
+- An installed copy turns on "Start with Windows" on its first run (the portable one doesn't). · Установленная копия сама включает автозапуск.
+
+### Changed · Изменено
+- Clicking several categories in a row starts one wallpaper pick after you stop (1.2 s), not one per click. If a category has nothing new, Hora tries another selected one before the fallback. · Один подбор после серии щелчков; при пустой категории — другая.
+
 ### Fixed · Исправлено
 - Leftovers of an installed update are also cleaned up during the daily update check, not only at the next start. · Остатки обновления убираются и при ежедневной проверке.
 

@@ -51,6 +51,7 @@ static WEATHER_PENDING: std::sync::Mutex<Option<(f64, f64, Result<weather::Weath
 // результат смены обоев ждёт здесь, если в момент прихода состояние программы было занято
 static WP_PENDING: std::sync::Mutex<Option<wallpaper::Outcome>> = std::sync::Mutex::new(None);
 const T_WP_RETRY: usize = 9;
+const T_RECHANGE: usize = 16; // категории меняют щелчками подряд — подбираем, когда щёлкать перестали
 const T_UPD_RETRY: usize = 15; // результат проверки/скачивания обновления ждёт свободного состояния
 static UPD_CHECKED: std::sync::Mutex<Option<(bool, Result<Option<update::Release>, String>)>> = std::sync::Mutex::new(None);
 static UPD_READY: std::sync::Mutex<Option<Result<PathBuf, String>>> = std::sync::Mutex::new(None);
@@ -115,6 +116,8 @@ const M_PAUSE: usize = 101;
 const M_SAVE: usize = 102;
 const M_FAV: usize = 103; // в избранное / убрать из избранного
 const M_BAN: usize = 104; // больше не показывать
+const M_FAV_MON: usize = 1100; // + номер монитора: в избранное обои этого монитора
+const M_BAN_MON: usize = 1120; // + номер монитора: больше не показывать обои этого монитора
 const M_FAV_DIR: usize = 105; // открыть папку избранного
 const M_BAN_OPEN: usize = 106; // открыть чёрный список
 const M_BAN_UNDO: usize = 107; // вернуть последние скрытые
@@ -301,7 +304,8 @@ const FONTS2: [(&str, &str); 11] = [
 const OPACITIES: [u32; 5] = [100, 85, 70, 55, 40];
 
 struct App {
-    hotkeys_ok: [bool; 3], // горячие клавиши зарегистрированы (следующие обои, в избранное, открыть окно)
+    hotkeys_ok: [bool; 4], // горячие клавиши зарегистрированы (следующие обои, в избранное, открыть окно, не нравится)
+    mon_walls: Vec<(RECT, Option<PathBuf>, Vec<u16>)>, // обои каждого монитора (порядок clock::monitors): прямоугольник, файл, id для Windows
     hwnd: HWND,
     cfg: Config,
     cfg_path: PathBuf,
@@ -380,6 +384,40 @@ impl App {
 
     fn is_fav(&self, p: &std::path::Path) -> bool {
         self.fav_names.contains(&wallpaper::key_of(p))
+    }
+
+    /// Обои каждого монитора — заново у Windows (после смены обоев и при запуске).
+    fn update_mon_walls(&mut self) {
+        let win = wallpaper::on_monitors();
+        self.mon_walls = clock::monitors()
+            .iter()
+            .map(|m| {
+                let hit = win.iter().find(|(_, r, _)| util::same_rect(r, &m.rect));
+                (m.rect, hit.and_then(|h| h.2.clone()), hit.map(|h| h.0.clone()).unwrap_or_default())
+            })
+            .collect();
+    }
+
+    /// Разные обои на нескольких мониторах — тогда «в избранное» и «не нравится» спрашивают, какой экран.
+    fn per_monitor(&self) -> bool {
+        self.cfg.wall_mode == "per_monitor" && self.mon_walls.iter().filter(|m| m.1.is_some()).count() > 1
+    }
+
+    /// Номер монитора под курсором мыши (только когда обои на мониторах разные).
+    fn monitor_under_cursor(&self) -> Option<usize> {
+        if !self.per_monitor() {
+            return None;
+        }
+        let mut pt = POINT { x: 0, y: 0 };
+        unsafe { GetCursorPos(&mut pt) };
+        self.mon_walls.iter().position(|m| pt.x >= m.0.left && pt.x < m.0.right && pt.y >= m.0.top && pt.y < m.0.bottom)
+    }
+
+    /// Обои монитора i — в том виде, как их знает программа (путь мог смениться: избранное ↔ кэш).
+    fn targets_on(&self, i: usize) -> Vec<PathBuf> {
+        let Some(p) = self.mon_walls.get(i).and_then(|m| m.1.clone()) else { return Vec::new() };
+        let key = wallpaper::key_of(&p);
+        vec![self.current.iter().find(|c| wallpaper::key_of(c) == key).cloned().unwrap_or(p)]
     }
 
     /// Все текущие обои в избранном?
@@ -674,6 +712,11 @@ impl App {
     }
 
     fn start_change(&mut self) {
+        self.start_change_on(None);
+    }
+
+    /// Подобрать обои; only — только для этого монитора (остальные остаются).
+    fn start_change_on(&mut self, only: Option<Vec<u16>>) {
         if self.busy {
             return;
         }
@@ -694,7 +737,7 @@ impl App {
         let screen = (mon.right - mon.left, mon.bottom - mon.top);
         let hwnd = self.hwnd as usize;
         let spawned = std::thread::Builder::new().stack_size(256 * 1024).spawn(move || {
-            let out = wallpaper::change(&cfg, &dirs, &current, screen);
+            let out = wallpaper::change(&cfg, &dirs, &current, screen, only.as_deref());
             let ptr = util::parcel_new(out);
             unsafe {
                 if PostMessageW(hwnd as HWND, WM_WP_DONE, 0, ptr) == 0 {
@@ -712,7 +755,14 @@ impl App {
         unsafe { SetTimer(self.hwnd, T_AFTER_WP, 1500, None) };
         match out.paths.first() {
             Some(_) => {
-                self.current = out.paths.clone();
+                if out.partial {
+                    // сменили только один монитор — что стоит на всех, спрашиваем у Windows
+                    self.update_mon_walls();
+                    let all: Vec<PathBuf> = self.mon_walls.iter().filter_map(|m| m.1.clone()).filter(|p| p.is_file()).collect();
+                    self.current = if all.is_empty() { out.paths.clone() } else { all };
+                } else {
+                    self.current = out.paths.clone();
+                }
                 self.last_change = util::now_unix();
                 let name = out.paths.iter().filter_map(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).collect::<Vec<_>>().join(", ");
                 self.status = name.clone();
@@ -736,6 +786,7 @@ impl App {
             }
         }
         // фон под часами — под новые обои; часы могли «потеряться», если Explorer пересоздал слой обоев
+        self.update_mon_walls();
         self.start_bg();
         self.tick_clock();
         unsafe { SetTimer(self.hwnd, T_TRIM, 3000, None) };
@@ -925,7 +976,7 @@ impl App {
     /// настроек об этом написано.
     fn register_hotkeys(&mut self) {
         use windows_sys::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
-        let keys = [self.cfg.hotkey_next.clone(), self.cfg.hotkey_fav.clone(), self.cfg.hotkey_open.clone()];
+        let keys = [self.cfg.hotkey_next.clone(), self.cfg.hotkey_fav.clone(), self.cfg.hotkey_open.clone(), self.cfg.hotkey_ban.clone()];
         for (i, k) in keys.iter().enumerate() {
             let id = HOTKEY_IDS[i];
             unsafe { UnregisterHotKey(self.hwnd, id) };
@@ -950,7 +1001,7 @@ impl App {
         if c.ui_lang != old.ui_lang {
             i18n::set_lang(&c.ui_lang); // окно и меню сразу на новом языке (окно перерисуется ниже)
         }
-        if c.hotkeys != old.hotkeys || c.hotkey_next != old.hotkey_next || c.hotkey_fav != old.hotkey_fav || c.hotkey_open != old.hotkey_open {
+        if c.hotkeys != old.hotkeys || c.hotkey_next != old.hotkey_next || c.hotkey_fav != old.hotkey_fav || c.hotkey_open != old.hotkey_open || c.hotkey_ban != old.hotkey_ban {
             self.register_hotkeys();
         }
         if c.update_check != old.update_check {
@@ -985,11 +1036,8 @@ impl App {
         let topics_now_changed = c.topics_at(hour) != old.topics_at(hour) && c.topics == old.topics;
         if (wall_keys_changed || topics_now_changed) && c.live != "video" {
             let _ = std::fs::create_dir_all(self.folder());
-            if self.busy {
-                self.change_again = true; // идёт подбор по старым настройкам — повторим после него
-            } else {
-                self.start_change();
-            }
+            // щёлкают категории подряд — подбираем, когда щёлкать перестали (1,2 с тишины)
+            unsafe { SetTimer(self.hwnd, T_RECHANGE, 1200, None) };
         }
         let weather_changed = c.weather != old.weather || c.weather_lat != old.weather_lat || c.weather_lon != old.weather_lon || c.weather_city != old.weather_city;
         if weather_changed {
@@ -1159,8 +1207,26 @@ fn build_menu(a: &App, bitmaps: &mut Vec<windows_sys::Win32::Graphics::Gdi::HBIT
         }
         add(m, M_NEXT, tr("Следующие обои"), false);
         let fav = a.current_is_fav();
-        add(m, M_FAV, if fav { tr("В избранном (нажмите, чтобы убрать)") } else { tr("В избранное") }, fav);
-        add(m, M_BAN, tr("Больше не показывать эти обои"), false);
+        if a.per_monitor() {
+            // несколько мониторов с разными обоями — выбираем, про какой экран речь
+            let mf = CreatePopupMenu();
+            let mb = CreatePopupMenu();
+            for (i, (r, p, _)) in a.mon_walls.iter().enumerate().take(10) {
+                let label = mon_label(i, r);
+                let f = p.as_ref().map(|p| a.is_fav(p)).unwrap_or(false);
+                add(mf, M_FAV_MON + i, &label, f);
+                add(mb, M_BAN_MON + i, &label, false);
+            }
+            sep(mf);
+            add(mf, M_FAV, tr("Все экраны"), fav);
+            sep(mb);
+            add(mb, M_BAN, tr("Все экраны"), false);
+            sub(m, mf, tr("В избранное"));
+            sub(m, mb, tr("Больше не показывать"));
+        } else {
+            add(m, M_FAV, if fav { tr("В избранном (нажмите, чтобы убрать)") } else { tr("В избранное") }, fav);
+            add(m, M_BAN, tr("Больше не показывать эти обои"), false);
+        }
         if !a.last_banned.is_empty() {
             add(m, M_BAN_UNDO, tr("Вернуть последние скрытые"), false);
         }
@@ -1352,6 +1418,77 @@ enum After {
     Quit,
 }
 
+/// В избранное / убрать из избранного — выбранные обои (все экраны или один монитор).
+fn fav_toggle(a: &mut App, targets: Vec<PathBuf>) {
+    if targets.is_empty() {
+        return;
+    }
+    let dir = favorites_dir();
+    if targets.iter().all(|p| a.is_fav(p)) {
+        for p in targets.clone() {
+            a.drop_favorite(&p);
+        }
+    } else {
+        if let Err(e) = std::fs::create_dir_all(&dir) {
+            log(&format!("не удалось создать папку избранного: {e}"));
+        }
+        for p in targets.clone() {
+            if a.is_fav(&p) {
+                continue;
+            }
+            let Some(name) = p.file_name() else { continue };
+            if let Err(e) = std::fs::copy(&p, dir.join(name)) {
+                log(&format!("не удалось добавить в избранное {}: {e}", p.display()));
+            }
+        }
+    }
+    a.refresh_lists();
+    ui::refresh();
+}
+
+/// «Больше не показывать» — выбранные обои; only — сменить обои только на этом мониторе.
+fn ban_wallpapers(a: &mut App, targets: Vec<PathBuf>, only: Option<Vec<u16>>) {
+    let keys: Vec<String> = targets.iter().map(|p| wallpaper::key_of(p)).filter(|k| !k.is_empty()).collect();
+    if keys.is_empty() {
+        return;
+    }
+    let mut list = match wallpaper::load_blacklist(&blacklist_path()) {
+        Ok(l) => l,
+        Err(e) => {
+            log(&format!("blacklist.txt не прочитался ({e}) — не трогаю его"));
+            return;
+        }
+    };
+    for k in &keys {
+        if !list.contains(k) {
+            list.push(k.clone());
+        }
+    }
+    if let Err(e) = wallpaper::save_blacklist(&blacklist_path(), &list) {
+        log(&format!("не удалось записать чёрный список: {e}"));
+        return;
+    }
+    // скрытое не должно всплывать и из избранного (запоминаем, что убрали, — для «Вернуть»)
+    a.banned_favs.clear();
+    for p in targets.clone() {
+        if a.is_fav(&p) {
+            a.drop_favorite(&p);
+            // после переноса в кэш путь в current уже новый
+            let key = wallpaper::key_of(&p);
+            if let Some(now) = a.current.iter().find(|c| wallpaper::key_of(c) == key) {
+                a.banned_favs.push(now.clone());
+            }
+        }
+    }
+    log(&format!("больше не показывать: {}", keys.join(", ")));
+    a.last_banned = keys;
+    a.refresh_lists();
+    if !matches!(a.live_mode, live::Mode::Video(_)) {
+        a.start_change_on(only); // сразу другие обои — на этом мониторе или везде (поверх видео их не видно)
+    }
+    ui::refresh();
+}
+
 fn on_menu(a: &mut App, id: usize) -> After {
     let old = a.cfg.clone();
     match id {
@@ -1374,69 +1511,25 @@ fn on_menu(a: &mut App, id: usize) -> After {
             return After::Nothing;
         }
         M_FAV => {
-            let dir = favorites_dir();
-            if a.current_is_fav() {
-                for p in a.current.clone() {
-                    a.drop_favorite(&p);
-                }
-            } else {
-                if let Err(e) = std::fs::create_dir_all(&dir) {
-                    log(&format!("не удалось создать папку избранного: {e}"));
-                }
-                for p in a.current.clone() {
-                    if a.is_fav(&p) {
-                        continue;
-                    }
-                    let Some(name) = p.file_name() else { continue };
-                    if let Err(e) = std::fs::copy(&p, dir.join(name)) {
-                        log(&format!("не удалось добавить в избранное {}: {e}", p.display()));
-                    }
-                }
-            }
-            a.refresh_lists();
-            ui::refresh();
+            let t = a.current.clone();
+            fav_toggle(a, t);
+            return After::Nothing;
+        }
+        x if (M_FAV_MON..M_FAV_MON + 10).contains(&x) => {
+            let t = a.targets_on(x - M_FAV_MON);
+            fav_toggle(a, t);
             return After::Nothing;
         }
         M_BAN => {
-            let keys: Vec<String> = a.current.iter().map(|p| wallpaper::key_of(p)).filter(|k| !k.is_empty()).collect();
-            if keys.is_empty() {
-                return After::Nothing;
-            }
-            let mut list = match wallpaper::load_blacklist(&blacklist_path()) {
-                Ok(l) => l,
-                Err(e) => {
-                    log(&format!("blacklist.txt не прочитался ({e}) — не трогаю его"));
-                    return After::Nothing;
-                }
-            };
-            for k in &keys {
-                if !list.contains(k) {
-                    list.push(k.clone());
-                }
-            }
-            if let Err(e) = wallpaper::save_blacklist(&blacklist_path(), &list) {
-                log(&format!("не удалось записать чёрный список: {e}"));
-                return After::Nothing;
-            }
-            // скрытое не должно всплывать и из избранного (запоминаем, что убрали, — для «Вернуть»)
-            a.banned_favs.clear();
-            for p in a.current.clone() {
-                if a.is_fav(&p) {
-                    a.drop_favorite(&p);
-                    // после переноса в кэш путь в current уже новый
-                    let key = wallpaper::key_of(&p);
-                    if let Some(now) = a.current.iter().find(|c| wallpaper::key_of(c) == key) {
-                        a.banned_favs.push(now.clone());
-                    }
-                }
-            }
-            log(&format!("больше не показывать: {}", keys.join(", ")));
-            a.last_banned = keys;
-            a.refresh_lists();
-            if !matches!(a.live_mode, live::Mode::Video(_)) {
-                a.start_change(); // сразу ставим другие обои (поверх видео их всё равно не видно)
-            }
-            ui::refresh();
+            let t = a.current.clone();
+            ban_wallpapers(a, t, None);
+            return After::Nothing;
+        }
+        x if (M_BAN_MON..M_BAN_MON + 10).contains(&x) => {
+            let i = x - M_BAN_MON;
+            let t = a.targets_on(i);
+            let only = a.mon_walls.get(i).map(|m| m.2.clone()).filter(|id| !id.is_empty());
+            ban_wallpapers(a, t, only);
             return After::Nothing;
         }
         M_BAN_UNDO => {
@@ -1686,7 +1779,17 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 ui::open();
                 return 0;
             }
-            let id = if wp as i32 == HOTKEY_IDS[0] { M_NEXT } else if wp as i32 == HOTKEY_IDS[1] { M_FAV } else { 0 };
+            // «в избранное» и «не нравится» — для обоев того монитора, где сейчас курсор мыши
+            let under = with_app(|a| a.monitor_under_cursor()).flatten();
+            let id = if wp as i32 == HOTKEY_IDS[0] {
+                M_NEXT
+            } else if wp as i32 == HOTKEY_IDS[1] {
+                under.map(|i| M_FAV_MON + i).unwrap_or(M_FAV)
+            } else if wp as i32 == HOTKEY_IDS[3] {
+                under.map(|i| M_BAN_MON + i).unwrap_or(M_BAN)
+            } else {
+                0
+            };
             if id != 0 {
                 if let Some(After::Open(p)) = with_app(|a| on_menu(a, id)) {
                     ShellExecuteW(hwnd, wide("open").as_ptr(), wide_os(p.as_os_str()).as_ptr(), std::ptr::null(), std::ptr::null(), SW_SHOWNORMAL);
@@ -1771,6 +1874,16 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
                 T_WP_RETRY => {
                     KillTimer(hwnd, T_WP_RETRY);
                     PostMessageW(hwnd, WM_WP_DONE, 0, 0);
+                }
+                T_RECHANGE => {
+                    KillTimer(hwnd, T_RECHANGE);
+                    with_app(|a| {
+                        if a.busy {
+                            a.change_again = true; // идёт подбор по старым настройкам — повторим после него
+                        } else {
+                            a.start_change();
+                        }
+                    });
                 }
                 T_UPD_RETRY => {
                     KillTimer(hwnd, T_UPD_RETRY);
@@ -1958,8 +2071,18 @@ unsafe extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM
     }
 }
 
-/// Номера горячих клавиш: следующие обои, в избранное, окно настроек.
-const HOTKEY_IDS: [i32; 3] = [1, 2, 3];
+/// «Монитор 2 · 1920×1080 (основной)»
+fn mon_label(i: usize, r: &RECT) -> String {
+    let primary = r.left == 0 && r.top == 0;
+    if i18n::en() {
+        format!("Monitor {} · {}×{}{}", i + 1, r.right - r.left, r.bottom - r.top, if primary { " (main)" } else { "" })
+    } else {
+        format!("Монитор {} · {}×{}{}", i + 1, r.right - r.left, r.bottom - r.top, if primary { " (основной)" } else { "" })
+    }
+}
+
+/// Номера горячих клавиш: следующие обои, в избранное, окно настроек, не нравится.
+const HOTKEY_IDS: [i32; 4] = [1, 2, 3, 4];
 
 /// «Win+Alt+N» → (модификаторы, код клавиши). Клавиша: буква, цифра, F1–F24, стрелка, Space.
 fn parse_hotkey(s: &str) -> Option<(u32, u32)> {
@@ -2229,16 +2352,29 @@ fn main() {
             banned_favs: Vec::new(),
             upd: UpdState::Idle,
             upd_notified: String::new(),
-            hotkeys_ok: [false; 3],
+            hotkeys_ok: [false; 4],
+            mon_walls: Vec::new(),
         };
         if first_run {
             app.save_cfg();
+            // установленная (не переносная) копия при первом запуске сама включает автозапуск —
+            // обои и часы должны быть на месте и после перезагрузки; выключается в «Прочее»
+            let installed = std::env::current_exe()
+                .ok()
+                .and_then(|e| e.parent().map(|d| d.to_path_buf()))
+                .map(|d| [false, true].iter().any(|all| setup::install_dir(*all).map(|i| setup::same_path(&i, &d)).unwrap_or(false)))
+                .unwrap_or(false);
+            if installed && !autostart_enabled() {
+                set_autostart(true);
+                log("первый запуск установленной копии — автозапуск включён");
+            }
         } else {
             app.cfg_mtime = mtime(&cfg_path);
         }
         let _ = std::fs::create_dir_all(app.folder());
         app.load_state();
         app.refresh_lists();
+        app.update_mon_walls();
         app.tray(NIM_ADD, "Hora");
         app.register_hotkeys();
         if crash::take_new() {
