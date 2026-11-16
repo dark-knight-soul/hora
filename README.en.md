@@ -26,13 +26,15 @@
 - ✨ **Live wallpapers** (optional): snow, rain, stars, falling leaves, fireflies or "match the weather" on top of your regular wallpaper — or **video instead of a picture**, including video wallpapers from the **Wallpaper Engine** Workshop.
 - ♥ **Favorites and a blacklist**: wallpapers you like come back from time to time, ones you don't are never shown again.
 - 🌅 **Topic schedule**: nature in the morning, sunsets in the evening, space at night.
-- ⌨️ **Hotkeys**: Win+Alt+N — next wallpaper, Win+Alt+H — add to favorites, Win+Alt+O — open settings (change them in `config.ini`).
+- ⌨️ **Hotkeys**: Win+Alt+N — next wallpaper, Win+Alt+H — add to favorites, Win+Alt+X — don't show again, Win+Alt+O — open settings. With several monitors, favorites and hiding apply to the screen under the mouse (change them in `config.ini`).
 - 🔄 **One-click updates**: Hora checks GitHub once a day and installs a new version only if its digital signature matches the author's key.
 - 🎞 **Wallpaper transitions**: fade, wipe, circle, blinds — the effects are done by Windows itself.
 
 > **Language:** the settings window, tray menu and installer are in English and Russian — Hora follows your Windows language automatically (switch it in Settings → Other → Language). The clock and the weather widget have their own language setting (Settings → Clock).
 
 <div align="center">
+<img src="docs/clock-styles-en.png" width="760" alt="Some of the 14 Hora clock styles">
+<br><br>
 <img src="docs/screen-categories-en.png" width="760" alt="Hora settings window">
 </div>
 

@@ -7,7 +7,7 @@ body:
     attributes:
       label: Hora version · Версия Hora
       description: Settings → Other · Настройки → Прочее
-      placeholder: "0.5.0"
+      placeholder: "1.0.0"
     validations:
       required: true
   - type: dropdown

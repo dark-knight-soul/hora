@@ -2178,10 +2178,14 @@ pub fn render_test(cfg: &Config, out: &std::path::Path, area: (i32, i32), weathe
     let src = unsafe { std::slice::from_raw_parts(fr.bits, (fr.w * fr.h) as usize) };
     let mut data = Vec::with_capacity((w * h * 3) as usize);
     let row_pad = (4 - (w * 3) % 4) % 4;
+    // HORA_RENDER_FLAT=<0..255> — ровный серый фон вместо перехода (для картинок в README)
+    let flat: Option<u32> = std::env::var("HORA_RENDER_FLAT").ok().and_then(|v| v.parse().ok()).map(|v: u32| v.min(255));
     for yy in (0..h).rev() {
         for xx in 0..w {
             // фон: от светло-серого к тёмному, как на примере
-            let bg = if cfg.halo {
+            let bg = if let Some(v) = flat {
+                v
+            } else if cfg.halo {
                 // пёстрый фон для проверки ореола: крупная чёрно-белая шахматка
                 if (xx / 90 + yy / 70) % 2 == 0 { 12 } else { 238 }
             } else {
